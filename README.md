@@ -82,3 +82,33 @@
 - `docs/drone_vehicle_geolocation_workflow.md`: 無人機車輛 GPS 定位完整工作流程與架構圖。
 - `docs/images/`: workflow 文件使用的流程示意圖。
 - `raw_videos/`: 原始無人機影片資料。
+
+## 從原始影片抽取影像
+
+`scripts/extract_frames.py` 會依照 `raw_videos/` 裡的影片檔名排序處理影片，預設每 3 秒擷取一張影像，並把三支影片的截圖依任務順序連續存到同一個資料夾。
+
+執行前需要先安裝 `ffmpeg`，並確認 `ffmpeg` 可以在終端機直接執行。
+
+```bash
+python3 scripts/extract_frames.py
+```
+
+預設輸出資料夾是 `extracted_frames/`，檔名會是：
+
+```text
+frame_000001.jpg
+frame_000002.jpg
+frame_000003.jpg
+...
+```
+
+若要指定輸入、輸出資料夾或抽圖間隔，可以使用：
+
+```bash
+python3 scripts/extract_frames.py \
+  --input-dir raw_videos \
+  --output-dir extracted_frames \
+  --interval 3
+```
+
+如果輸出資料夾已經有檔案，腳本會停止以避免覆蓋或混入舊資料。確定要寫入既有資料夾時再加上 `--overwrite`。
