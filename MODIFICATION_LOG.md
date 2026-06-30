@@ -3,6 +3,12 @@
 ## 2026-06-30
 
 - 分支：`main`
+- 變更摘要：新增抽取影像拼接成大圖的腳本，支援黑色空白區、feather blending、CUDA flag 與 README 使用教學。
+- 影響範圍：`scripts/stitch_frames.py`、`README.md`、`.gitignore`、`requirements.txt`、`MODIFICATION_LOG.md`
+
+## 2026-06-30
+
+- 分支：`main`
 - 變更摘要：新增影片每 3 秒抽取影像的腳本，並在 README 補充執行方式與輸出說明。
 - 影響範圍：`scripts/extract_frames.py`、`README.md`、`.gitignore`、`MODIFICATION_LOG.md`
 

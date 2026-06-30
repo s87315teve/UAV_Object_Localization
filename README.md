@@ -112,3 +112,61 @@ python3 scripts/extract_frames.py \
 ```
 
 如果輸出資料夾已經有檔案，腳本會停止以避免覆蓋或混入舊資料。確定要寫入既有資料夾時再加上 `--overwrite`。
+
+## 將抽出的影像拼接成大圖
+
+`scripts/stitch_frames.py` 會讀取 `extracted_frames/` 中現有的影像，依檔名排序後做特徵匹配與 RANSAC 對齊，再把所有 frame 投影到同一張大畫布。你可以先手動刪掉不想使用的頭尾 frame，腳本只會使用資料夾裡剩下的影像。
+
+方法重點：
+
+- 預設使用 SIFT 特徵做匹配；如果目前 OpenCV 不支援 SIFT，會退回 ORB。
+- 相鄰 frame 會先估計 `homography`，再累積到第一張 frame 的座標系。
+- 輸出不會被強制拉伸成長方形地圖；沒有影像覆蓋的區域會保留為全黑。
+- 重疊區域使用 feather blending，降低接縫突兀感。
+- `--cuda` 會改用 OpenCV CUDA ORB 特徵加速；這需要自行安裝支援 CUDA 的 OpenCV，`pip install opencv-python` 通常不包含 CUDA。
+
+先安裝 Python 套件：
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+使用預設設定拼接：
+
+```bash
+python3 scripts/stitch_frames.py
+```
+
+預設會讀取：
+
+```text
+extracted_frames/
+```
+
+並輸出：
+
+```text
+stitched_outputs/mosaic.png
+```
+
+如果要指定輸入和輸出：
+
+```bash
+python3 scripts/stitch_frames.py \
+  --input-dir extracted_frames \
+  --output stitched_outputs/mosaic.png
+```
+
+如果你的 OpenCV 是支援 CUDA 的版本，可以加上：
+
+```bash
+python3 scripts/stitch_frames.py --cuda
+```
+
+如果結果局部看起來有透視拉扯，可以改用較保守的 affine 模型：
+
+```bash
+python3 scripts/stitch_frames.py --transform affine
+```
+
+如果輸出檔已存在，腳本會停止以避免覆蓋；確定要覆蓋時加上 `--overwrite`。
