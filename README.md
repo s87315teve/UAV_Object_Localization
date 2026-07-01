@@ -171,6 +171,99 @@ python3 scripts/stitch_frames.py --transform affine
 
 如果輸出檔已存在，腳本會停止以避免覆蓋；確定要覆蓋時加上 `--overwrite`。
 
+## 地圖像素轉 GPS 與影像定位
+
+目前先以 `衛星影像/aerial_gps_range_clean.png` 作為地理參考基準圖，GPS 範圍與圖片尺寸記錄在 `衛星影像/aerial_gps_range_info.md`。這張圖是 `1600 x 1000 px`，座標原點在左上角，x 往右增加，y 往下增加。換算只保證在該檔案記錄的 GPS 外框內有效，超出外框的點會被忽略或直接報錯。
+
+產生一張帶有格線、邊界與已知 GPS 點位的基準圖：
+
+```bash
+python3 scripts/georeference_map.py draw-map
+```
+
+若要產生後直接開視窗查看，加上 `--show`：
+
+```bash
+python3 scripts/georeference_map.py draw-map --show
+```
+
+預設輸出：
+
+```text
+stitched_outputs/georef/aerial_reference_grid.png
+```
+
+如果要手動點擊地圖並輸出 GPS：
+
+```bash
+python3 scripts/georeference_map.py click
+```
+
+程式會先輸出同一張基準圖，然後開啟 OpenCV 視窗。對地圖左鍵點擊時，終端機會輸出該 pixel 對應的 WGS84 GPS，例如：
+
+```json
+{
+  "x": 801.0,
+  "y": 258.0,
+  "latitude": 23.45563935,
+  "longitude": 120.2816845
+}
+```
+
+如果只想從命令列換算單一 pixel：
+
+```bash
+python3 scripts/georeference_map.py pixel --x 801 --y 258
+```
+
+反向從 GPS 換算回地圖 pixel：
+
+```bash
+python3 scripts/georeference_map.py gps --lat 23.45564 --lon 120.28169
+```
+
+如果要輸入一張影像，讓程式在基準地圖上找最符合的位置：
+
+```bash
+python3 scripts/georeference_map.py match \
+  --query path/to/query_image.jpg \
+  --output stitched_outputs/georef/query_match.png \
+  --show
+```
+
+`match` 模式會先嘗試 SIFT/ORB 特徵匹配與 RANSAC homography；若特徵不足，`auto` 模式會退回多尺度 template matching。輸出 JSON 會包含匹配中心點的 pixel 與 GPS，並輸出一張視覺化圖片，把 query 的估計位置畫回 `aerial_gps_range_clean.png`。加上 `--show` 時，程式會在存檔後直接開 OpenCV 視窗顯示結果，按 `q` 或 `Esc` 關閉。如果 query 影像和基準地圖比例、角度或透視差異很大，匹配信心會下降；正式流程仍建議先用無人機 GPS/IMU 粗估候選區域，再在局部範圍內做影像配準。
+
+如果輸入影像的上下左右方向不固定，可以加 `--orientations` 讓程式嘗試多個方向後選分數最高者：
+
+```bash
+python3 scripts/georeference_map.py match \
+  --query path/to/query_image.jpg \
+  --orientations all \
+  --output stitched_outputs/georef/query_match.png \
+  --show
+```
+
+可選值：
+
+- `none`: 只用原圖，預設值。
+- `rotations`: 嘗試原圖與 90/180/270 度旋轉。
+- `flips`: 嘗試原圖、水平翻轉、垂直翻轉與 180 度旋轉。
+- `all`: 嘗試旋轉、翻轉與對角轉置共 8 種方向。
+
+對 `extracted_frames/` 這類 `3840 x 2160` 無人機 frame，整張圖直接全域匹配通常不可靠，因為近距離農田紋理會和衛星圖中很多位置相似。建議用 `--query-roi x,y,width,height` 只截取道路、河道、建物邊緣等固定地物；如果要把原始 frame 內某個點一起換成 GPS，可加 `--query-point x,y`：
+
+```bash
+python3 scripts/georeference_map.py match \
+  --query extracted_frames/frame_000073.jpg \
+  --query-roi 0,900,1600,900 \
+  --query-point 800,1350 \
+  --orientations all \
+  --output stitched_outputs/georef/frame_000073_roi_match.png \
+  --show
+```
+
+如果輸出含有 `Low template score` warning，該結果只能當粗略猜測，不建議當成最終 GPS。這時應該縮小 ROI、改選更穩定的固定地物，或先用無人機 GPS/IMU 限定候選區域。
+
 ## 使用 UDIS++ 拼接影像
 
 `scripts/stitch_frames_udis2.py` 是 UDIS++ 的 adapter，不直接包含 UDIS2 原始碼或模型權重。它會把 `extracted_frames/` 內剩下的 frame 依檔名排序，逐對送進官方 UDIS2 的 Stage 1 Warp 和 Stage 2 Composition，並把每一輪的 `composition.jpg` 當成下一輪輸入，最後輸出一張 progressive mosaic。

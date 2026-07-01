@@ -1,5 +1,11 @@
 # 修改紀錄
 
+## 2026-07-01
+
+- 分支：`main`
+- 變更摘要：新增地理參考地圖工具，可把 `aerial_gps_range_clean.png` 的 pixel 座標轉成 GPS、產生可視化基準圖、互動點擊輸出 GPS，並用輸入影像匹配回基準地圖位置；影像匹配支援大圖自動縮放、低分警告、`--query-roi`、`--query-point`、`--orientations` 方向候選與 `--show` 視窗顯示。
+- 影響範圍：`scripts/georeference_map.py`、`README.md`、`MODIFICATION_LOG.md`
+
 ## 2026-06-30
 
 - 分支：`main`
