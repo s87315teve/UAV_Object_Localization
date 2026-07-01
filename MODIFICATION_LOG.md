@@ -3,6 +3,24 @@
 ## 2026-06-30
 
 - 分支：`main`
+- 變更摘要：新增 Python 3.13 / PyTorch cu132 的 UDIS2 環境說明與環境檔，並加入 CPU compatibility hook 讓新版 PyTorch 可執行 UDIS2 smoke test。
+- 影響範圍：`environment-udis2-py313.yml`、`scripts/stitch_frames_udis2.py`、`scripts/udis2_compat/sitecustomize.py`、`README.md`、`MODIFICATION_LOG.md`
+
+## 2026-06-30
+
+- 分支：`main`
+- 變更摘要：新增 UDIS2 conda 環境檔與 checkpoint 下載教學，並將 UDIS++ adapter 預設改為 CPU 模式避免 CUDA driver 異常時卡住。
+- 影響範圍：`environment-udis2.yml`、`scripts/stitch_frames_udis2.py`、`README.md`、`MODIFICATION_LOG.md`
+
+## 2026-06-30
+
+- 分支：`main`
+- 變更摘要：新增 UDIS++ progressive 拼接 adapter，並在 README 補充 UDIS2 repo、checkpoint、執行方式與限制說明。
+- 影響範圍：`scripts/stitch_frames_udis2.py`、`README.md`、`.gitignore`、`MODIFICATION_LOG.md`
+
+## 2026-06-30
+
+- 分支：`main`
 - 變更摘要：新增抽取影像拼接成大圖的腳本，支援黑色空白區、feather blending、CUDA flag 與 README 使用教學。
 - 影響範圍：`scripts/stitch_frames.py`、`README.md`、`.gitignore`、`requirements.txt`、`MODIFICATION_LOG.md`
 

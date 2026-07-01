@@ -170,3 +170,94 @@ python3 scripts/stitch_frames.py --transform affine
 ```
 
 如果輸出檔已存在，腳本會停止以避免覆蓋；確定要覆蓋時加上 `--overwrite`。
+
+## 使用 UDIS++ 拼接影像
+
+`scripts/stitch_frames_udis2.py` 是 UDIS++ 的 adapter，不直接包含 UDIS2 原始碼或模型權重。它會把 `extracted_frames/` 內剩下的 frame 依檔名排序，逐對送進官方 UDIS2 的 Stage 1 Warp 和 Stage 2 Composition，並把每一輪的 `composition.jpg` 當成下一輪輸入，最後輸出一張 progressive mosaic。
+
+這個版本比較接近 UDIS++ 論文方法，但需要額外環境與 checkpoint，速度也會比 OpenCV 版本慢很多。它適合用來追求 seam/fusion 品質，不適合快速大量試參數。
+
+先 clone 官方 UDIS2 repo：
+
+```bash
+mkdir -p third_party
+git clone https://github.com/nie-lang/UDIS2.git third_party/UDIS2
+```
+
+依 UDIS2 官方 README 下載兩個 pretrained model，分別放到：
+
+```text
+third_party/UDIS2/Warp/model/
+third_party/UDIS2/Composition/model/
+```
+
+建議另外建立 UDIS2 專用 Python/conda 環境。本 repo 目前測試過 Python 3.13 搭配 PyTorch cu132：
+
+```bash
+conda env create -f environment-udis2-py313.yml
+conda activate udis2_py313
+
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu132
+pip3 install opencv-python scikit-image gdown
+```
+
+如果你想保留 UDIS2 官方較舊的 Python 3.8 / PyTorch 1.7 路線，也可以參考 `environment-udis2.yml`；但目前本機成功 smoke test 的環境是 `udis2_py313`。
+
+本機已建立的 Python 3.13 環境路徑是：
+
+```text
+/home/steve/anaconda3/envs/udis2_py313/bin/python
+```
+
+下載官方 checkpoint：
+
+```bash
+conda run -n udis2_py313 gdown --id 1GBwB0y3tUUsOYHErSqxDxoC_Om3BJUEt \
+  -O third_party/UDIS2/Warp/model/warp.pth
+
+conda run -n udis2_py313 gdown --id 1OaG0ayEwRPhKVV_OwQwvwHDFHC26iv30 \
+  -O third_party/UDIS2/Composition/model/composition.pth
+```
+
+執行 UDIS++ progressive 拼接：
+
+```bash
+python3 scripts/stitch_frames_udis2.py \
+  --input-dir extracted_frames \
+  --udis2-root third_party/UDIS2 \
+  --output-dir stitched_outputs/udis2 \
+  --udis2-python /home/steve/anaconda3/envs/udis2_py313/bin/python \
+  --gpu -1
+```
+
+如果你在 conda 環境中安裝 UDIS2，可以指定那個環境的 Python：
+
+```bash
+python3 scripts/stitch_frames_udis2.py \
+  --udis2-python /path/to/conda/envs/udis2_py313/bin/python
+```
+
+常用參數：
+
+- `--gpu -1`: 使用 CPU，適合 NVIDIA driver 或 CUDA 還沒確認正常時。
+- `--gpu 0`: 傳給 UDIS2 的 GPU id；只有在 `nvidia-smi` 和 PyTorch CUDA tensor 測試都正常時再使用。
+- `--max-iter 50`: 每一對影像做 warp adaption 的迭代次數；越高通常越慢。
+- `--overwrite`: 覆蓋既有輸出資料夾。
+- `--clean-work`: 輸出最後大圖後刪除每一對影像的中間資料夾；預設會保留中間輸出，方便檢查 `warp1.jpg`、`warp2.jpg`、`mask1.jpg`、`mask2.jpg`、`composition.jpg`。
+
+CUDA 檢查方式：
+
+```bash
+nvidia-smi
+conda run -n udis2_py313 python -c "import torch; print(torch.cuda.is_available()); print(torch.zeros(1).cuda())"
+```
+
+如果上述任一指令失敗或卡住，先用 `--gpu -1`。
+
+預設最後輸出：
+
+```text
+stitched_outputs/udis2/udis2_mosaic.jpg
+```
+
+注意：UDIS2 官方 `test_other.py` 是針對兩張影像設計；本專案腳本採用逐對 progressive 的方式擴展到多張 frame。若任務路徑很長，可能會累積誤差，必要時可以先刪掉模糊、重疊太少或頭尾不需要的 frame。
