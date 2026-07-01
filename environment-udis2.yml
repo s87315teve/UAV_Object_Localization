@@ -1,0 +1,16 @@
+name: udis2
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.8
+  - pip
+  - pytorch=1.7.1
+  - torchvision=0.8.2
+  - cpuonly
+  - numpy=1.19.5
+  - scikit-image=0.17.2
+  - tensorboard=2.9.0
+  - pip:
+      - opencv-python==4.5.5.64
+      - gdown==5.2.2

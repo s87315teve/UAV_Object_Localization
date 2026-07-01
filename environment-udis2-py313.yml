@@ -1,0 +1,6 @@
+name: udis2_py313
+channels:
+  - defaults
+dependencies:
+  - python=3.13
+  - pip
