@@ -43,7 +43,7 @@ except ModuleNotFoundError:
 
 
 DEFAULT_FRAME = Path("extracted_frames/frame_000051.jpg")
-DEFAULT_OUTPUT_ROOT = Path("stitched_outputs/vehicle_localization")
+DEFAULT_OUTPUT_ROOT = Path("vehicle_localization_outputs")
 DEFAULT_YOLO_MODEL = "yolo26m.pt"
 DEFAULT_VEHICLE_CLASSES = "car,bus,truck"
 
@@ -80,7 +80,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help=(
-            "Output directory. Default: stitched_outputs/vehicle_localization/<frame filename stem>."
+            "Output directory. Default: vehicle_localization_outputs/<frame filename stem>."
         ),
     )
 

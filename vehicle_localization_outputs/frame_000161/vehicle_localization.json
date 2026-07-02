@@ -1,0 +1,106 @@
+{
+  "frame": "test_image/frame_000161.jpg",
+  "map_image": "衛星影像/aerial_gps_range_clean.png",
+  "detector": "yolo",
+  "yolo_model": "yolo26m.pt",
+  "detections_count": 1,
+  "map_match": {
+    "method": "template",
+    "score": 0.4479,
+    "orientation": "identity",
+    "center_pixel": {
+      "x": 574.0,
+      "y": 434.0
+    },
+    "corners_pixel": [
+      {
+        "x": 497.0,
+        "y": 391.0
+      },
+      {
+        "x": 650.0,
+        "y": 391.0
+      },
+      {
+        "x": 650.0,
+        "y": 476.0
+      },
+      {
+        "x": 497.0,
+        "y": 476.0
+      }
+    ],
+    "orientation_scores": [
+      {
+        "orientation": "rotate90_cw",
+        "method": "template",
+        "score": 0.4953
+      },
+      {
+        "orientation": "identity",
+        "method": "template",
+        "score": 0.4479
+      },
+      {
+        "orientation": "rotate90_ccw",
+        "method": "template",
+        "score": 0.4461
+      },
+      {
+        "orientation": "rotate180",
+        "method": "template",
+        "score": 0.4135
+      }
+    ]
+  },
+  "vehicles": [
+    {
+      "vehicle_id": "veh_001",
+      "class_name": "car",
+      "confidence": 0.1811,
+      "detector": "yolo:yolo26m.pt:tile_x2",
+      "bbox_xyxy": [
+        2339.76,
+        2089.23,
+        2399.627,
+        2159.0
+      ],
+      "center_image_pixel": {
+        "x": 2369.694,
+        "y": 2124.115
+      },
+      "map_pixel": {
+        "x": 591.788,
+        "y": 475.965
+      },
+      "gps": {
+        "latitude": 23.45336572,
+        "longitude": 120.27865071
+      },
+      "twd97": {
+        "x": 176300.764,
+        "y": 2594671.738
+      },
+      "crop": "vehicle_localization_outputs/frame_000161/crops/veh_001.jpg"
+    }
+  ],
+  "outputs": {
+    "frame_overlay": "vehicle_localization_outputs/frame_000161/01_frame_vehicle_detections.jpg",
+    "map_overlay": "vehicle_localization_outputs/frame_000161/02_map_vehicle_coordinates.jpg",
+    "process_overview": "vehicle_localization_outputs/frame_000161/03_process_overview.jpg",
+    "json": "vehicle_localization_outputs/frame_000161/vehicle_localization.json",
+    "csv": "vehicle_localization_outputs/frame_000161/vehicle_localization.csv"
+  },
+  "warnings": [
+    "identity: Low template score 0.4479 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
+    "rotate180: Low template score 0.4135 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
+    "rotate90_ccw: Low template score 0.4461 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
+    "Best rotated orientation score did not exceed identity by 0.080; kept identity to avoid a weak texture false match.",
+    "Map template score is below threshold; treat map coordinates as rough demo output."
+  ],
+  "deferred_work": [
+    "Train or fine-tune a competition-specific detector for the roof marker X.",
+    "Use drone GPS/IMU or manually selected stable-landmark ROI to constrain map matching.",
+    "Add multi-frame tracking so the same vehicle is assigned a stable ID over time."
+  ]
+}

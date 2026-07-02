@@ -1,0 +1,2 @@
+vehicle_id,class_name,confidence,bbox_xyxy,center_image_x,center_image_y,map_x,map_y,latitude,longitude,twd97_x,twd97_y
+veh_001,car,0.1811,"[2339.76, 2089.23, 2399.627, 2159.0]",2369.694,2124.115,591.788,475.965,23.45336572,120.27865071,176300.764,2594671.738

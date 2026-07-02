@@ -301,7 +301,7 @@ python3 scripts/localize_vehicles.py \
 主要輸出：
 
 ```text
-stitched_outputs/vehicle_localization/frame_000051/
+vehicle_localization_outputs/frame_000051/
 ├── 01_frame_vehicle_detections.jpg
 ├── 02_map_vehicle_coordinates.jpg
 ├── 03_process_overview.jpg
@@ -310,10 +310,10 @@ stitched_outputs/vehicle_localization/frame_000051/
 └── crops/
 ```
 
-如果沒有指定 `--output-dir`，程式會依輸入檔名自動建立輸出資料夾，例如 `--frame test_image/frame_000161.jpg` 會輸出到：
+如果沒有指定 `--output-dir`，程式會依輸入檔名自動建立獨立輸出資料夾，例如 `--frame test_image/frame_000161.jpg` 會輸出到：
 
 ```text
-stitched_outputs/vehicle_localization/frame_000161/
+vehicle_localization_outputs/frame_000161/
 ```
 
 注意：`frame_000051.jpg` 這類全圖對衛星圖做特徵匹配時容易被重複農田紋理誤導，因此 script 預設用 template matching，並會在 JSON 的 `warnings` 記錄低信心匹配。正式比賽版本應加入無人機 GPS/IMU 或穩定固定地物 ROI 來縮小搜尋範圍。地圖匹配預設會測試 `0/90/180/270` 度旋轉，並在車輛中心點轉地圖座標時套用對應旋轉矩陣。為了避免重複田地紋理造成弱假匹配，預設只有旋轉方向分數比原方向高出 `--orientation-switch-margin 0.08` 以上才會切換；如果確定影像方向固定，可加 `--orientations none` 只測原始方向以加速。

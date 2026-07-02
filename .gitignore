@@ -60,6 +60,8 @@ __pycache__/
 *.SVG
 !衛星影像/
 !衛星影像/**
+!vehicle_localization_outputs/
+!vehicle_localization_outputs/**
 yolo*.pt
 *.pptx
 extracted_frames/

@@ -2,6 +2,12 @@
 
 ## 2026-07-02
 
+- 分支：`vehicle-localization-test-assets`，預計合併至 `main`
+- 變更摘要：將車輛定位 demo 的預設輸出改為獨立資料夾 `vehicle_localization_outputs/`，並加入 frame 51 與 frame 161 的輸出結果，方便直接從 GitHub 取得測試輸入與對應輸出。
+- 影響範圍：`scripts/localize_vehicles.py`、`README.md`、`.gitignore`、`vehicle_localization_outputs/`、`MODIFICATION_LOG.md`
+
+## 2026-07-02
+
 - 分支：`vehicle-localization-test-assets`
 - 變更摘要：新增 UAV frame 車輛偵測與地圖座標標記流程，支援 YOLO26m tile/upscale 偵測、白車 fallback、四方向地圖匹配、旋轉後車輛中心點定位、WGS84/TWD97 輸出、demo overview 視覺化與測試影像資料夾。
 - 影響範圍：`scripts/localize_vehicles.py`、`scripts/georeference_map.py`、`README.md`、`requirements.txt`、`.gitignore`、`test_image/`、`MODIFICATION_LOG.md`
