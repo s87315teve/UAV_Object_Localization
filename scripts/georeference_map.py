@@ -449,6 +449,21 @@ def find_best_match(
         raise RuntimeError(f"No orientation candidate matched successfully. {joined_failures}")
 
     best_result = max(scored_results, key=match_quality)
+    identity_result = next(
+        (result for result in scored_results if result["orientation"] == "identity"),
+        None,
+    )
+    orientation_switch_margin = float(getattr(args, "orientation_switch_margin", 0.0))
+    if (
+        identity_result is not None
+        and best_result["orientation"] != "identity"
+        and match_quality(best_result) - match_quality(identity_result) < orientation_switch_margin
+    ):
+        warnings.append(
+            "Best rotated orientation score did not exceed identity by "
+            f"{orientation_switch_margin:.3f}; kept identity to avoid a weak texture false match."
+        )
+        best_result = identity_result
     best_result["orientation_scores"] = [
         {
             "orientation": result["orientation"],
@@ -553,22 +568,24 @@ def apply_orientation(image: np.ndarray, orientation: str) -> np.ndarray:
 
 
 def orientation_matrix(orientation: str, width: int, height: int) -> np.ndarray:
+    max_x = width - 1
+    max_y = height - 1
     if orientation == "identity":
         return np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
     if orientation == "rotate90_cw":
-        return np.array([[0, -1, height], [1, 0, 0], [0, 0, 1]], dtype=np.float64)
+        return np.array([[0, -1, max_y], [1, 0, 0], [0, 0, 1]], dtype=np.float64)
     if orientation == "rotate180":
-        return np.array([[-1, 0, width], [0, -1, height], [0, 0, 1]], dtype=np.float64)
+        return np.array([[-1, 0, max_x], [0, -1, max_y], [0, 0, 1]], dtype=np.float64)
     if orientation == "rotate90_ccw":
-        return np.array([[0, 1, 0], [-1, 0, width], [0, 0, 1]], dtype=np.float64)
+        return np.array([[0, 1, 0], [-1, 0, max_x], [0, 0, 1]], dtype=np.float64)
     if orientation == "flip_horizontal":
-        return np.array([[-1, 0, width], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        return np.array([[-1, 0, max_x], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
     if orientation == "flip_vertical":
-        return np.array([[1, 0, 0], [0, -1, height], [0, 0, 1]], dtype=np.float64)
+        return np.array([[1, 0, 0], [0, -1, max_y], [0, 0, 1]], dtype=np.float64)
     if orientation == "transpose":
         return np.array([[0, 1, 0], [1, 0, 0], [0, 0, 1]], dtype=np.float64)
     if orientation == "anti_transpose":
-        return np.array([[0, -1, height], [-1, 0, width], [0, 0, 1]], dtype=np.float64)
+        return np.array([[0, -1, max_y], [-1, 0, max_x], [0, 0, 1]], dtype=np.float64)
     raise ValueError(f"Unknown orientation: {orientation}")
 
 

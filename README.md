@@ -264,6 +264,64 @@ python3 scripts/georeference_map.py match \
 
 如果輸出含有 `Low template score` warning，該結果只能當粗略猜測，不建議當成最終 GPS。這時應該縮小 ROI、改選更穩定的固定地物，或先用無人機 GPS/IMU 限定候選區域。
 
+## 範例：自動找車並標記地圖座標
+
+比賽規章要求飛行展示過程中要在回傳畫面框出辨識成功目標與座標；賽後繳交紙本結果時，座標需以 TWD97 呈現。`scripts/localize_vehicles.py` 針對這個需求做一個離線 demo pipeline：
+
+1. 讀取無人機 frame，例如 `test_image/frame_000051.jpg`。
+2. 用 tile + upscale 方式把小車放大後丟入車輛偵測器。
+3. 把整張 frame 對到 `衛星影像/aerial_gps_range_clean.png`。
+4. 將車輛中心點轉成參考大地圖 pixel、WGS84 GPS 與 TWD97 TM2 座標。
+5. 輸出原圖框選、地圖標記、流程總覽圖、JSON 與 CSV。
+
+安裝 YOLO 相關套件後，預設會使用 YOLO26m 權重：
+
+```bash
+python3 -m pip install -r requirements.txt
+
+python3 scripts/localize_vehicles.py \
+  --frame test_image/frame_000051.jpg \
+  --detector yolo \
+  --yolo-model yolo26m.pt \
+  --tile-size 960 \
+  --tile-overlap 240 \
+  --tile-upscales 1,2 \
+  --show
+```
+
+如果本機尚未安裝 `ultralytics` 或暫時沒有 YOLO26m 權重，可以先用白車 heuristic 產生 demo 圖，確認輸出格式與視覺化流程：
+
+```bash
+python3 scripts/localize_vehicles.py \
+  --frame test_image/frame_000051.jpg \
+  --detector white-heuristic \
+  --show
+```
+
+主要輸出：
+
+```text
+stitched_outputs/vehicle_localization/frame_000051/
+├── 01_frame_vehicle_detections.jpg
+├── 02_map_vehicle_coordinates.jpg
+├── 03_process_overview.jpg
+├── vehicle_localization.json
+├── vehicle_localization.csv
+└── crops/
+```
+
+如果沒有指定 `--output-dir`，程式會依輸入檔名自動建立輸出資料夾，例如 `--frame test_image/frame_000161.jpg` 會輸出到：
+
+```text
+stitched_outputs/vehicle_localization/frame_000161/
+```
+
+注意：`frame_000051.jpg` 這類全圖對衛星圖做特徵匹配時容易被重複農田紋理誤導，因此 script 預設用 template matching，並會在 JSON 的 `warnings` 記錄低信心匹配。正式比賽版本應加入無人機 GPS/IMU 或穩定固定地物 ROI 來縮小搜尋範圍。地圖匹配預設會測試 `0/90/180/270` 度旋轉，並在車輛中心點轉地圖座標時套用對應旋轉矩陣。為了避免重複田地紋理造成弱假匹配，預設只有旋轉方向分數比原方向高出 `--orientation-switch-margin 0.08` 以上才會切換；如果確定影像方向固定，可加 `--orientations none` 只測原始方向以加速。
+
+加上 `--show` 時，程式會在輸出檔案後開啟 `03_process_overview.jpg` 的 OpenCV 視窗。這張 overview 下方會列出每台車的 image center、WGS84 與 TWD97 座標，按 `q` 或 `Esc` 關閉。
+
+目前先做「車輛」辨識，車頂 80cm x 80cm 指認圖或白車上的 X 圖案辨識先列為後續工作；建議下一步收集比賽高度下的車頂圖案樣本，另外訓練 marker detector 或在 YOLO 車框內做二階段分類。
+
 ## 使用 UDIS++ 拼接影像
 
 `scripts/stitch_frames_udis2.py` 是 UDIS++ 的 adapter，不直接包含 UDIS2 原始碼或模型權重。它會把 `extracted_frames/` 內剩下的 frame 依檔名排序，逐對送進官方 UDIS2 的 Stage 1 Warp 和 Stage 2 Composition，並把每一輪的 `composition.jpg` 當成下一輪輸入，最後輸出一張 progressive mosaic。
