@@ -2,6 +2,12 @@
 
 ## 2026-07-02
 
+- 分支：`main`
+- 變更摘要：使用 `uav_contest_env` 重新產生 frame 51 與 frame 161 的車輛定位輸出，並在 README 補充重產測試輸出的 conda 指令。
+- 影響範圍：`vehicle_localization_outputs/frame_000051/`、`vehicle_localization_outputs/frame_000161/`、`README.md`、`MODIFICATION_LOG.md`
+
+## 2026-07-02
+
 - 分支：`vehicle-localization-test-assets`，預計合併至 `main`
 - 變更摘要：將車輛定位 demo 的預設輸出改為獨立資料夾 `vehicle_localization_outputs/`，並加入 frame 51 與 frame 161 的輸出結果，方便直接從 GitHub 取得測試輸入與對應輸出。
 - 影響範圍：`scripts/localize_vehicles.py`、`README.md`、`.gitignore`、`vehicle_localization_outputs/`、`MODIFICATION_LOG.md`

@@ -316,6 +316,20 @@ vehicle_localization_outputs/frame_000051/
 vehicle_localization_outputs/frame_000161/
 ```
 
+若要用本機 `uav_contest_env` 重新產生 GitHub 內附的兩組測試輸出，執行：
+
+```bash
+conda run -n uav_contest_env python scripts/localize_vehicles.py \
+  --frame test_image/frame_000051.jpg \
+  --detector yolo \
+  --yolo-model yolo26m.pt
+
+conda run -n uav_contest_env python scripts/localize_vehicles.py \
+  --frame test_image/frame_000161.jpg \
+  --detector yolo \
+  --yolo-model yolo26m.pt
+```
+
 注意：`frame_000051.jpg` 這類全圖對衛星圖做特徵匹配時容易被重複農田紋理誤導，因此 script 預設用 template matching，並會在 JSON 的 `warnings` 記錄低信心匹配。正式比賽版本應加入無人機 GPS/IMU 或穩定固定地物 ROI 來縮小搜尋範圍。地圖匹配預設會測試 `0/90/180/270` 度旋轉，並在車輛中心點轉地圖座標時套用對應旋轉矩陣。為了避免重複田地紋理造成弱假匹配，預設只有旋轉方向分數比原方向高出 `--orientation-switch-margin 0.08` 以上才會切換；如果確定影像方向固定，可加 `--orientations none` 只測原始方向以加速。
 
 加上 `--show` 時，程式會在輸出檔案後開啟 `03_process_overview.jpg` 的 OpenCV 視窗。這張 overview 下方會列出每台車的 image center、WGS84 與 TWD97 座標，按 `q` 或 `Esc` 關閉。
