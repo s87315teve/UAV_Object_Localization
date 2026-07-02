@@ -3,6 +3,12 @@
 ## 2026-07-02
 
 - 分支：`main`
+- 變更摘要：將車輛定位 demo 預設與 README 範例模型改為 `yolo26l.pt`，並使用 `uav_contest_env` 重新產生 frame 51 與 frame 161 的測試輸出。
+- 影響範圍：`scripts/localize_vehicles.py`、`vehicle_localization_outputs/frame_000051/`、`vehicle_localization_outputs/frame_000161/`、`README.md`、`MODIFICATION_LOG.md`
+
+## 2026-07-02
+
+- 分支：`main`
 - 變更摘要：使用 `uav_contest_env` 重新產生 frame 51 與 frame 161 的車輛定位輸出，並在 README 補充重產測試輸出的 conda 指令。
 - 影響範圍：`vehicle_localization_outputs/frame_000051/`、`vehicle_localization_outputs/frame_000161/`、`README.md`、`MODIFICATION_LOG.md`
 

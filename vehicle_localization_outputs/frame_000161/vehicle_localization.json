@@ -2,7 +2,7 @@
   "frame": "test_image/frame_000161.jpg",
   "map_image": "衛星影像/aerial_gps_range_clean.png",
   "detector": "yolo",
-  "yolo_model": "yolo26m.pt",
+  "yolo_model": "yolo26l.pt",
   "detections_count": 1,
   "map_match": {
     "method": "template",
@@ -57,29 +57,29 @@
     {
       "vehicle_id": "veh_001",
       "class_name": "car",
-      "confidence": 0.1811,
-      "detector": "yolo:yolo26m.pt:tile_x2",
+      "confidence": 0.3291,
+      "detector": "yolo:yolo26l.pt:tile_x2",
       "bbox_xyxy": [
-        2339.76,
-        2089.23,
-        2399.627,
-        2159.0
+        3326.73,
+        1320.546,
+        3450.745,
+        1391.302
       ],
       "center_image_pixel": {
-        "x": 2369.694,
-        "y": 2124.115
+        "x": 3388.738,
+        "y": 1355.924
       },
       "map_pixel": {
-        "x": 591.788,
-        "y": 475.965
+        "x": 632.55,
+        "y": 445.237
       },
       "gps": {
-        "latitude": 23.45336572,
-        "longitude": 120.27865071
+        "latitude": 23.45368624,
+        "longitude": 120.2792418
       },
       "twd97": {
-        "x": 176300.764,
-        "y": 2594671.738
+        "x": 176361.335,
+        "y": 2594706.932
       },
       "crop": "vehicle_localization_outputs/frame_000161/crops/veh_001.jpg"
     }

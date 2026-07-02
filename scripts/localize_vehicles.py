@@ -44,7 +44,7 @@ except ModuleNotFoundError:
 
 DEFAULT_FRAME = Path("extracted_frames/frame_000051.jpg")
 DEFAULT_OUTPUT_ROOT = Path("vehicle_localization_outputs")
-DEFAULT_YOLO_MODEL = "yolo26m.pt"
+DEFAULT_YOLO_MODEL = "yolo26l.pt"
 DEFAULT_VEHICLE_CLASSES = "car,bus,truck"
 
 
@@ -635,6 +635,8 @@ def save_detection_crops(
 ) -> list[str]:
     crop_dir = output_dir / "crops"
     crop_dir.mkdir(parents=True, exist_ok=True)
+    for stale_crop in crop_dir.glob("veh_*.jpg"):
+        stale_crop.unlink()
     crop_paths: list[str] = []
     for index, detection in enumerate(detections, start=1):
         x1, y1, x2, y2 = [int(round(value)) for value in detection.bbox_xyxy]

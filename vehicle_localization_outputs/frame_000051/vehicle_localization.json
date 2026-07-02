@@ -2,8 +2,8 @@
   "frame": "test_image/frame_000051.jpg",
   "map_image": "衛星影像/aerial_gps_range_clean.png",
   "detector": "yolo",
-  "yolo_model": "yolo26m.pt",
-  "detections_count": 1,
+  "yolo_model": "yolo26l.pt",
+  "detections_count": 5,
   "map_match": {
     "method": "template",
     "score": 0.3631,
@@ -57,31 +57,147 @@
     {
       "vehicle_id": "veh_001",
       "class_name": "car",
-      "confidence": 0.4074,
-      "detector": "yolo:yolo26m.pt:tile_x1",
+      "confidence": 0.6758,
+      "detector": "yolo:yolo26l.pt:tile_x1",
       "bbox_xyxy": [
-        2426.348,
-        1200.089,
-        2479.606,
-        1299.653
+        2426.163,
+        1178.079,
+        2478.979,
+        1301.316
       ],
       "center_image_pixel": {
-        "x": 2452.977,
-        "y": 1249.871
+        "x": 2452.571,
+        "y": 1239.698
       },
       "map_pixel": {
-        "x": 1110.119,
-        "y": 618.995
+        "x": 1110.103,
+        "y": 618.588
       },
       "gps": {
-        "latitude": 23.45187374,
-        "longitude": 120.28616704
+        "latitude": 23.45187799,
+        "longitude": 120.2861668
       },
       "twd97": {
-        "x": 177067.905,
-        "y": 2594502.681
+        "x": 177067.883,
+        "y": 2594503.151
       },
       "crop": "vehicle_localization_outputs/frame_000051/crops/veh_001.jpg"
+    },
+    {
+      "vehicle_id": "veh_002",
+      "class_name": "car",
+      "confidence": 0.4187,
+      "detector": "yolo:yolo26l.pt:tile_x1",
+      "bbox_xyxy": [
+        2960.639,
+        1200.165,
+        3016.396,
+        1298.564
+      ],
+      "center_image_pixel": {
+        "x": 2988.518,
+        "y": 1249.365
+      },
+      "map_pixel": {
+        "x": 1131.541,
+        "y": 618.975
+      },
+      "gps": {
+        "latitude": 23.45187395,
+        "longitude": 120.28647767
+      },
+      "twd97": {
+        "x": 177099.643,
+        "y": 2594502.547
+      },
+      "crop": "vehicle_localization_outputs/frame_000051/crops/veh_002.jpg"
+    },
+    {
+      "vehicle_id": "veh_003",
+      "class_name": "car",
+      "confidence": 0.3806,
+      "detector": "yolo:yolo26l.pt:tile_x1",
+      "bbox_xyxy": [
+        2262.651,
+        720.383,
+        2343.354,
+        804.603
+      ],
+      "center_image_pixel": {
+        "x": 2303.003,
+        "y": 762.493
+      },
+      "map_pixel": {
+        "x": 1104.12,
+        "y": 599.5
+      },
+      "gps": {
+        "latitude": 23.4520771,
+        "longitude": 120.28608005
+      },
+      "twd97": {
+        "x": 177059.128,
+        "y": 2594525.246
+      },
+      "crop": "vehicle_localization_outputs/frame_000051/crops/veh_003.jpg"
+    },
+    {
+      "vehicle_id": "veh_004",
+      "class_name": "car",
+      "confidence": 0.2593,
+      "detector": "yolo:yolo26l.pt:tile_x2",
+      "bbox_xyxy": [
+        3043.762,
+        901.343,
+        3107.697,
+        944.793
+      ],
+      "center_image_pixel": {
+        "x": 3075.73,
+        "y": 923.068
+      },
+      "map_pixel": {
+        "x": 1135.029,
+        "y": 605.923
+      },
+      "gps": {
+        "latitude": 23.4520101,
+        "longitude": 120.28652826
+      },
+      "twd97": {
+        "x": 177104.887,
+        "y": 2594517.599
+      },
+      "crop": "vehicle_localization_outputs/frame_000051/crops/veh_004.jpg"
+    },
+    {
+      "vehicle_id": "veh_005",
+      "class_name": "truck",
+      "confidence": 0.2395,
+      "detector": "yolo:yolo26l.pt:tile_x1",
+      "bbox_xyxy": [
+        2333.789,
+        725.302,
+        2691.04,
+        1234.25
+      ],
+      "center_image_pixel": {
+        "x": 2512.414,
+        "y": 979.776
+      },
+      "map_pixel": {
+        "x": 1112.497,
+        "y": 608.191
+      },
+      "gps": {
+        "latitude": 23.45198644,
+        "longitude": 120.28620151
+      },
+      "twd97": {
+        "x": 177071.489,
+        "y": 2594515.144
+      },
+      "crop": "vehicle_localization_outputs/frame_000051/crops/veh_005.jpg"
     }
   ],
   "outputs": {

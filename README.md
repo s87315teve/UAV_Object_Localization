@@ -274,7 +274,7 @@ python3 scripts/georeference_map.py match \
 4. 將車輛中心點轉成參考大地圖 pixel、WGS84 GPS 與 TWD97 TM2 座標。
 5. 輸出原圖框選、地圖標記、流程總覽圖、JSON 與 CSV。
 
-安裝 YOLO 相關套件後，預設會使用 YOLO26m 權重：
+安裝 YOLO 相關套件後，預設會使用 YOLO26l 權重：
 
 ```bash
 python3 -m pip install -r requirements.txt
@@ -282,14 +282,14 @@ python3 -m pip install -r requirements.txt
 python3 scripts/localize_vehicles.py \
   --frame test_image/frame_000051.jpg \
   --detector yolo \
-  --yolo-model yolo26m.pt \
+  --yolo-model yolo26l.pt \
   --tile-size 960 \
   --tile-overlap 240 \
   --tile-upscales 1,2 \
   --show
 ```
 
-如果本機尚未安裝 `ultralytics` 或暫時沒有 YOLO26m 權重，可以先用白車 heuristic 產生 demo 圖，確認輸出格式與視覺化流程：
+如果本機尚未安裝 `ultralytics` 或暫時沒有 YOLO26l 權重，可以先用白車 heuristic 產生 demo 圖，確認輸出格式與視覺化流程：
 
 ```bash
 python3 scripts/localize_vehicles.py \
@@ -322,12 +322,12 @@ vehicle_localization_outputs/frame_000161/
 conda run -n uav_contest_env python scripts/localize_vehicles.py \
   --frame test_image/frame_000051.jpg \
   --detector yolo \
-  --yolo-model yolo26m.pt
+  --yolo-model yolo26l.pt
 
 conda run -n uav_contest_env python scripts/localize_vehicles.py \
   --frame test_image/frame_000161.jpg \
   --detector yolo \
-  --yolo-model yolo26m.pt
+  --yolo-model yolo26l.pt
 ```
 
 注意：`frame_000051.jpg` 這類全圖對衛星圖做特徵匹配時容易被重複農田紋理誤導，因此 script 預設用 template matching，並會在 JSON 的 `warnings` 記錄低信心匹配。正式比賽版本應加入無人機 GPS/IMU 或穩定固定地物 ROI 來縮小搜尋範圍。地圖匹配預設會測試 `0/90/180/270` 度旋轉，並在車輛中心點轉地圖座標時套用對應旋轉矩陣。為了避免重複田地紋理造成弱假匹配，預設只有旋轉方向分數比原方向高出 `--orientation-switch-margin 0.08` 以上才會切換；如果確定影像方向固定，可加 `--orientations none` 只測原始方向以加速。
