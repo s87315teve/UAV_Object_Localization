@@ -63,6 +63,7 @@ __pycache__/
 !vehicle_localization_outputs/
 !vehicle_localization_outputs/**
 vehicle_localization_outputs/.DS_Store
+vehicle_localization_outputs/**/.DS_Store
 !georeferenced_maps/
 georeferenced_maps/selected_roi/
 !georeferenced_maps/localize_ready_selected_roi/

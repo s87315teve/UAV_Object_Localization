@@ -490,9 +490,11 @@ def draw_map_overlay(
     localized_detections: list[dict[str, Any]],
 ) -> np.ndarray:
     output = map_image.copy()
+    highlight_color = (0, 255, 255)
+    vehicle_color = (0, 0, 255)
     corners = np.array(match_result["corners"], dtype=np.int32).reshape(-1, 1, 2)
     match_line_thickness = max(3, round(min(map_image.shape[:2]) / 320))
-    cv2.polylines(output, [corners], True, (0, 255, 255), match_line_thickness, cv2.LINE_AA)
+    cv2.polylines(output, [corners], True, highlight_color, match_line_thickness, cv2.LINE_AA)
 
     for item in localized_detections:
         if item.get("map_pixel") is None:
@@ -505,7 +507,7 @@ def draw_map_overlay(
         cv2.drawMarker(
             output,
             (x, y),
-            (0, 0, 255),
+            vehicle_color,
             cv2.MARKER_TILTED_CROSS,
             marker_size,
             marker_thickness,
@@ -537,23 +539,23 @@ def draw_map_focus_inset(
     match_result: dict[str, Any],
     localized_detections: list[dict[str, Any]],
 ) -> None:
-    focus_points = [tuple(point) for point in match_result["corners"]]
-    for item in localized_detections:
-        if item.get("map_pixel") is None:
-            continue
-        pixel = item["map_pixel"]
-        focus_points.append((float(pixel["x"]), float(pixel["y"])))
-    if not focus_points:
+    highlight_color = (0, 255, 255)
+    vehicle_color = (0, 0, 255)
+    match_points = [tuple(point) for point in match_result["corners"]]
+    if not match_points:
         return
 
-    crop_box = focus_crop_box(focus_points, output.shape[1], output.shape[0])
+    crop_box = focus_crop_box(match_points, output.shape[1], output.shape[0])
     x1, y1, x2, y2 = crop_box
     crop = output[y1:y2, x1:x2].copy()
     if crop.size == 0:
         return
 
-    inset_width = min(max(520, output.shape[1] // 3), max(1, output.shape[1] - 48))
-    inset_height = min(max(320, output.shape[0] // 5), max(1, output.shape[0] - 48))
+    max_inset_width = min(max(760, output.shape[1] // 2), max(1, output.shape[1] - 48))
+    max_inset_height = min(max(460, output.shape[0] // 3), max(1, output.shape[0] - 48))
+    inset_scale = min(max_inset_width / crop.shape[1], max_inset_height / crop.shape[0])
+    inset_width = max(1, int(round(crop.shape[1] * inset_scale)))
+    inset_height = max(1, int(round(crop.shape[0] * inset_scale)))
     resized = cv2.resize(crop, (inset_width, inset_height), interpolation=cv2.INTER_CUBIC)
     scale_x = inset_width / max(1, x2 - x1)
     scale_y = inset_height / max(1, y2 - y1)
@@ -563,8 +565,8 @@ def draw_map_focus_inset(
         resized,
         [np.array(inset_corners, dtype=np.int32).reshape(-1, 1, 2)],
         True,
-        (0, 255, 255),
-        5,
+        highlight_color,
+        max(8, round(min(inset_width, inset_height) / 52)),
         cv2.LINE_AA,
     )
     for item in localized_detections:
@@ -576,10 +578,10 @@ def draw_map_focus_inset(
         cv2.drawMarker(
             resized,
             (local_x, local_y),
-            (0, 0, 255),
+            vehicle_color,
             cv2.MARKER_TILTED_CROSS,
-            40,
-            4,
+            max(44, round(min(inset_width, inset_height) / 10)),
+            max(6, round(min(inset_width, inset_height) / 90)),
             cv2.LINE_AA,
         )
         gps = item.get("gps")
@@ -593,21 +595,14 @@ def draw_map_focus_inset(
             )
 
     draw_label(resized, "match zoom", (12, 28), (0, 0, 0), (255, 255, 255))
-    target_x, target_y = inset_position(output.shape[1], output.shape[0], focus_points, inset_width, inset_height)
+    target_x, target_y = inset_position(output.shape[1], output.shape[0], match_points, inset_width, inset_height)
     output[target_y : target_y + inset_height, target_x : target_x + inset_width] = resized
     cv2.rectangle(
         output,
         (target_x, target_y),
         (target_x + inset_width, target_y + inset_height),
-        (255, 255, 255),
-        max(4, round(min(output.shape[:2]) / 360)),
-    )
-    cv2.rectangle(
-        output,
-        (target_x, target_y),
-        (target_x + inset_width, target_y + inset_height),
-        (0, 0, 255),
-        max(2, round(min(output.shape[:2]) / 700)),
+        highlight_color,
+        max(10, round(min(output.shape[:2]) / 180)),
         cv2.LINE_AA,
     )
 
@@ -617,8 +612,8 @@ def draw_map_focus_inset(
         output,
         (int(round(center_x)), int(round(center_y))),
         inset_anchor,
-        (0, 0, 255),
-        max(2, round(min(output.shape[:2]) / 700)),
+        highlight_color,
+        max(6, round(min(output.shape[:2]) / 260)),
         cv2.LINE_AA,
     )
 
@@ -632,7 +627,7 @@ def focus_crop_box(
     ys = [point[1] for point in points]
     width = max(xs) - min(xs)
     height = max(ys) - min(ys)
-    pad = max(160.0, width * 1.8, height * 1.8)
+    pad = max(18.0, width * 0.18, height * 0.18)
     x1 = int(clamp(min(xs) - pad, 0, image_width - 1))
     y1 = int(clamp(min(ys) - pad, 0, image_height - 1))
     x2 = int(clamp(max(xs) + pad, x1 + 1, image_width))
