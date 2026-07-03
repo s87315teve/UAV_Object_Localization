@@ -1,5 +1,11 @@
 # 修改紀錄
 
+## 2026-07-03
+
+- 分支：`main`
+- 變更摘要：新增四點 GPS affine 底圖建立工具與 localize-ready 壓縮 UAV 底圖資料夾，將車輛定位預設底圖改為壓縮 UAV georeferenced basemap；影像匹配預設改為降採樣 SIFT/ORB + RANSAC feature matching，失敗時 fallback template matching，並改善地圖投影視覺化的框線與局部放大顯示；使用新預設重新產生 frame 51 與 frame 161 demo 輸出。
+- 影響範圍：`scripts/create_georeferenced_basemap.py`、`scripts/georeference_map.py`、`scripts/localize_vehicles.py`、`scripts/adjust_strip_mosaic_gui.py`、`scripts/crop_image_roi.py`、`scripts/stitch_vertical_strip.py`、`georeferenced_maps/localize_ready_selected_roi/`、`vehicle_localization_outputs/frame_000051/`、`vehicle_localization_outputs/frame_000161/`、`.gitignore`、`README.md`、`MODIFICATION_LOG.md`
+
 ## 2026-07-02
 
 - 分支：`main`

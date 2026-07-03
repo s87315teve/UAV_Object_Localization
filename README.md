@@ -171,9 +171,286 @@ python3 scripts/stitch_frames.py --transform affine
 
 如果輸出檔已存在，腳本會停止以避免覆蓋；確定要覆蓋時加上 `--overwrite`。
 
+### 固定航高垂直航帶拼接
+
+如果無人機高度、角度固定，且路徑大致是垂直等速移動，建議先使用
+`scripts/stitch_vertical_strip.py`。這個版本不估計自由 homography，而是只估相鄰
+frame 的平移量，預設強制只沿 y 軸累積位移，避免 SIFT/homography 把地圖拉扯變形。
+
+先用少量影片片段測試：
+
+```bash
+python3 scripts/stitch_vertical_strip.py \
+  --input-dir raw_videos \
+  --output stitched_outputs/vertical_strip_test.png \
+  --frame-interval-seconds 2 \
+  --duration-seconds 20 \
+  --max-frames-per-video 10 \
+  --overwrite
+```
+
+若要把 `raw_videos/video01.MP4`、`video02.MP4`、`video03.MP4` 依序連成一張圖，
+但只丟掉第一支影片最前面幾秒、第三支影片最後面幾秒，可以使用：
+
+```bash
+python3 scripts/stitch_vertical_strip.py \
+  --input-dir raw_videos \
+  --output stitched_outputs/video01_02_03_vertical_strip.png \
+  --skip-first-start-seconds 5 \
+  --skip-last-end-seconds 5 \
+  --frame-interval-seconds 2 \
+  --max-frames-per-video 0 \
+  --axis both \
+  --render-scale 0.35 \
+  --overwrite
+```
+
+如果已經先抽好 frame，也可以直接拼接影像資料夾：
+
+```bash
+python3 scripts/stitch_vertical_strip.py \
+  --input-dir extracted_frames \
+  --output stitched_outputs/vertical_strip_mosaic.png \
+  --axis y \
+  --smoothing median-step
+```
+
+若畫面有輕微左右漂移，可以允許 x/y 平移：
+
+```bash
+python3 scripts/stitch_vertical_strip.py \
+  --input-dir extracted_frames \
+  --output stitched_outputs/vertical_strip_xy_mosaic.png \
+  --axis both
+```
+
+若速度確定很穩定，可以改成線性路徑平滑，讓整條航帶更接近等速模型：
+
+```bash
+python3 scripts/stitch_vertical_strip.py \
+  --input-dir extracted_frames \
+  --output stitched_outputs/vertical_strip_linear_mosaic.png \
+  --smoothing linear-path
+```
+
+直接讀影片時，程式會把實際使用的影像存到 `<輸出檔名>_sampled_frames/`，
+並同時輸出 `<輸出檔名>_report.json`。report 裡包含每張 frame 的累積位置、
+相鄰 frame 的 phase correlation 位移與 response。若 response 很低，代表該段
+重疊不足、畫面重複紋理太多，或跨影片銜接處不穩，建議先把該段 frame 分開處理。
+
+### 手動微調航帶拼接結果
+
+`scripts/adjust_strip_mosaic_gui.py` 可以讀取 `stitch_vertical_strip.py` 產生的
+report，自動把飛行路徑切成多段直線與轉彎段，然後用 GUI 微調每一段的上下左右位置。
+
+先檢查自動分段結果：
+
+```bash
+python3 scripts/adjust_strip_mosaic_gui.py \
+  --report stitched_outputs/video01_02_03_vertical_strip_report.json \
+  --print-segments
+```
+
+開啟 GUI：
+
+```bash
+python3 scripts/adjust_strip_mosaic_gui.py \
+  --report stitched_outputs/video01_02_03_vertical_strip_report.json \
+  --output stitched_outputs/video01_02_03_vertical_strip_adjusted.png \
+  --render-scale 0.35 \
+  --overwrite
+```
+
+如果要刪掉橫向轉彎段，只保留直線航帶，先輸出一張 vertical-only 基準圖：
+
+```bash
+python3 scripts/adjust_strip_mosaic_gui.py \
+  --report stitched_outputs/video01_02_03_vertical_strip_report.json \
+  --output stitched_outputs/video01_02_03_vertical_only.png \
+  --adjustments stitched_outputs/video01_02_03_vertical_only_adjustments.json \
+  --keep-label-prefix vertical \
+  --render-scale 0.35 \
+  --save-only \
+  --overwrite
+```
+
+再開啟只含直線航帶的 GUI：
+
+```bash
+python3 scripts/adjust_strip_mosaic_gui.py \
+  --report stitched_outputs/video01_02_03_vertical_strip_report.json \
+  --output stitched_outputs/video01_02_03_vertical_only_adjusted.png \
+  --adjustments stitched_outputs/video01_02_03_vertical_only_adjusted_adjustments.json \
+  --keep-label-prefix vertical \
+  --render-scale 0.35 \
+  --overwrite
+```
+
+預設會開啟按鈕式 GUI，左側是控制面板，右側是較大的預覽畫面。
+`Save Adjusted Mosaic` 與 `Quit` 固定在左上方，避免被其他控制項擠到看不到。
+常用按鈕：
+
+| 按鈕 | 功能 |
+| --- | --- |
+| `1. vertical...` 等段落按鈕 | 選取要調整的直線航帶 |
+| `↑` / `↓` / `←` / `→` | 微調目前航帶 |
+| `Previous` / `Next` | 切換上一段 / 下一段 |
+| `Step -` / `Step +` | 縮小 / 放大每次移動距離 |
+| `Zoom -` / `Zoom +` | 縮小 / 放大檢視 |
+| `View ↑/↓/←/→` | 平移檢視畫面 |
+| `Center` | 把目前航帶置中 |
+| `Reset Segment` | 重設目前航帶 offset |
+| `Reset All` | 重設所有航帶 offset |
+| `Save Adjusted Mosaic` | 儲存調整後的大圖與 adjustment JSON |
+| `Quit` | 離開 |
+
+按鈕式 GUI 仍支援快捷鍵：
+
+| 按鍵 | 功能 |
+| --- | --- |
+| 方向鍵或 `h/j/k/l` | 移動目前選取的航帶段 |
+| `n` / `p` | 選下一段 / 上一段 |
+| `+` / `-` | 放大 / 縮小每次微調步長 |
+| `z` / `x` | 縮小 / 放大檢視 |
+| `w/a/e/d` | 平移檢視畫面 |
+| 滑鼠左鍵 | 選取點到的航帶段 |
+| `c` | 把目前選取段置中 |
+| `r` | 重設目前選取段的 offset |
+| `0` | 重設所有段的 offset |
+| `s` | 儲存調整後的大圖與 adjustment JSON |
+| `q` 或 `Esc` | 離開 |
+
+如果想使用舊版 OpenCV 快捷鍵視窗，可以加上：
+
+```bash
+python3 scripts/adjust_strip_mosaic_gui.py \
+  --report stitched_outputs/video01_02_03_vertical_strip_report.json \
+  --output stitched_outputs/video01_02_03_vertical_only_adjusted.png \
+  --keep-label-prefix vertical \
+  --render-scale 0.35 \
+  --gui-backend opencv \
+  --overwrite
+```
+
+### 框選長方形範圍另存新檔
+
+`scripts/crop_image_roi.py` 可以從任意大圖中框選長方形 ROI，並用原始解析度裁切存成新檔。
+
+互動框選：
+
+```bash
+python3 scripts/crop_image_roi.py \
+  --input stitched_outputs/video01_02_03_vertical_only_adjusted.png \
+  --output stitched_outputs/selected_roi.png \
+  --overwrite
+```
+
+操作方式：
+
+| 按鍵 / 操作 | 功能 |
+| --- | --- |
+| 滑鼠左鍵拖曳 | 框選長方形範圍 |
+| `s` | 儲存目前框選範圍 |
+| `r` | 重設框選 |
+| `f` | 顯示整張圖 |
+| `+` / `-` | 放大 / 縮小檢視 |
+| `w/a/x/d` | 平移檢視畫面 |
+| `q` 或 `Esc` | 離開不存檔 |
+
+如果已經知道座標，也可以直接裁切：
+
+```bash
+python3 scripts/crop_image_roi.py \
+  --input stitched_outputs/video01_02_03_vertical_only_adjusted.png \
+  --output stitched_outputs/selected_roi.png \
+  --x 1000 \
+  --y 2000 \
+  --width 1200 \
+  --height 800 \
+  --overwrite
+```
+
+程式會同時輸出 `<輸出檔名>_metadata.json`，記錄原圖大小與裁切座標。
+
 ## 地圖像素轉 GPS 與影像定位
 
-目前先以 `衛星影像/aerial_gps_range_clean.png` 作為地理參考基準圖，GPS 範圍與圖片尺寸記錄在 `衛星影像/aerial_gps_range_info.md`。這張圖是 `1600 x 1000 px`，座標原點在左上角，x 往右增加，y 往下增加。換算只保證在該檔案記錄的 GPS 外框內有效，超出外框的點會被忽略或直接報錯。
+目前預設以 `georeferenced_maps/localize_ready_selected_roi/uav_selected_roi_compressed_georef.json`
+作為地理參考基準，對應的底圖是壓縮後的
+`georeferenced_maps/localize_ready_selected_roi/uav_selected_roi_basemap_compressed.jpg`。
+這張 UAV 底圖是 `4156 x 7925 px`，座標原點在左上角，x 往右增加，y 往下增加。
+若要改用其他底圖，可以傳入 `--georef-json path/to/basemap_georef.json`。
+
+舊的衛星圖 `衛星影像/aerial_gps_range_clean.png` 仍保留在 repo 中，可作為比較或備援參考。
+
+### 建立自己的四點 GPS 底圖
+
+如果要把自己選的圖片做成之後可重複使用的底圖，使用 `scripts/create_georeferenced_basemap.py`：
+
+```bash
+conda activate uav_contest_env
+python3 scripts/create_georeferenced_basemap.py
+```
+
+如果不想切換目前 shell 的 conda 環境，也可以使用：
+
+```bash
+conda run --no-capture-output -n uav_contest_env python scripts/create_georeferenced_basemap.py
+```
+
+這個腳本需要在終端機輸入 GPS；不要用一般 `conda run -n ...`，否則點完 4 個點後可能會因為讀不到 stdin 而出現 `EOFError`。
+
+程式會開啟檔案選擇視窗，讓你選圖片；接著在圖片上點 4 個已知 GPS 的控制點，按 `Enter` 或空白鍵確認後，在終端機依序輸入每個點的 `latitude,longitude`。這 4 個點不需要是長方形四個角，只要它們在圖片與 GPS 中的相對位置正確、且不要全部落在同一直線上，程式會用這些點估出整張圖共用的線性座標轉換。互動視窗支援：
+
+| 按鍵 / 操作 | 功能 |
+| --- | --- |
+| 滑鼠左鍵 | 依序標記 `P1` 到 `P4` |
+| `Enter` 或空白鍵 | 4 點都標好後繼續輸入 GPS |
+| `u` | 復原上一個點 |
+| `f` | 顯示整張圖 |
+| `+` / `-` | 放大 / 縮小檢視 |
+| `w/a/s/d` | 平移檢視畫面 |
+| `q` 或 `Esc` | 離開不存檔 |
+
+預設會輸出到 `georeferenced_maps/<圖片檔名>/`：
+
+```text
+georeferenced_maps/<圖片檔名>/
+├── basemap.<原副檔名>
+├── basemap_georef.json
+├── basemap_georef_preview.jpg
+└── control_points.csv
+```
+
+`basemap_georef.json` 會保存圖片尺寸、4 個控制點、WGS84 GPS、pixel 到 GPS 的 affine 線性轉換，以及 GPS 回 pixel 的反向 affine 線性轉換。後續轉換座標時，把這份 JSON 傳給 `--georef-json`：
+
+```bash
+python3 scripts/georeference_map.py pixel \
+  --georef-json georeferenced_maps/my_map/basemap_georef.json \
+  --x 801 \
+  --y 258
+```
+
+反向從 GPS 換回底圖 pixel：
+
+```bash
+python3 scripts/georeference_map.py gps \
+  --georef-json georeferenced_maps/my_map/basemap_georef.json \
+  --lat 23.45564 \
+  --lon 120.28169
+```
+
+也可以直接用這份底圖 JSON 跑影像匹配或車輛定位：
+
+```bash
+python3 scripts/georeference_map.py match \
+  --georef-json georeferenced_maps/my_map/basemap_georef.json \
+  --query path/to/query_image.jpg \
+  --output stitched_outputs/georef/query_match.png
+
+python3 scripts/localize_vehicles.py \
+  --georef-json georeferenced_maps/my_map/basemap_georef.json \
+  --frame test_image/frame_000051.jpg
+```
 
 產生一張帶有格線、邊界與已知 GPS 點位的基準圖：
 
@@ -231,7 +508,7 @@ python3 scripts/georeference_map.py match \
   --show
 ```
 
-`match` 模式會先嘗試 SIFT/ORB 特徵匹配與 RANSAC homography；若特徵不足，`auto` 模式會退回多尺度 template matching。輸出 JSON 會包含匹配中心點的 pixel 與 GPS，並輸出一張視覺化圖片，把 query 的估計位置畫回 `aerial_gps_range_clean.png`。加上 `--show` 時，程式會在存檔後直接開 OpenCV 視窗顯示結果，按 `q` 或 `Esc` 關閉。如果 query 影像和基準地圖比例、角度或透視差異很大，匹配信心會下降；正式流程仍建議先用無人機 GPS/IMU 粗估候選區域，再在局部範圍內做影像配準。
+`match` 模式會先嘗試 SIFT/ORB 特徵匹配與 RANSAC homography；若特徵不足，`auto` 模式會退回多尺度 template matching。輸出 JSON 會包含匹配中心點的 pixel 與 GPS，並輸出一張視覺化圖片，把 query 的估計位置畫回目前使用的 georeferenced basemap。加上 `--show` 時，程式會在存檔後直接開 OpenCV 視窗顯示結果，按 `q` 或 `Esc` 關閉。如果 query 影像和基準地圖比例、角度或透視差異很大，匹配信心會下降；正式流程仍建議先用無人機 GPS/IMU 粗估候選區域，再在局部範圍內做影像配準。
 
 如果輸入影像的上下左右方向不固定，可以加 `--orientations` 讓程式嘗試多個方向後選分數最高者：
 
@@ -270,7 +547,7 @@ python3 scripts/georeference_map.py match \
 
 1. 讀取無人機 frame，例如 `test_image/frame_000051.jpg`。
 2. 用 tile + upscale 方式把小車放大後丟入車輛偵測器。
-3. 把整張 frame 對到 `衛星影像/aerial_gps_range_clean.png`。
+3. 把整張 frame 對到預設壓縮 UAV georeferenced basemap。
 4. 將車輛中心點轉成參考大地圖 pixel、WGS84 GPS 與 TWD97 TM2 座標。
 5. 輸出原圖框選、地圖標記、流程總覽圖、JSON 與 CSV。
 

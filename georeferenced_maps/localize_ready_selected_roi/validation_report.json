@@ -1,0 +1,109 @@
+{
+  "georef_json": "georeferenced_maps/localize_ready_selected_roi/uav_selected_roi_compressed_georef.json",
+  "image": "uav_selected_roi_basemap_compressed.jpg",
+  "image_size": {
+    "width": 4156,
+    "height": 7925
+  },
+  "full_image_bounds": {
+    "north": 23.45635520298471,
+    "south": 23.45105800815051,
+    "west": 120.27300401857106,
+    "east": 120.28224645950263
+  },
+  "control_point_bounds": {
+    "north": 23.45604,
+    "south": 23.451916,
+    "west": 120.273426,
+    "east": 120.281385
+  },
+  "image_corners_gps": [
+    {
+      "pixel": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "gps": {
+        "latitude": 23.45201167,
+        "longitude": 120.27300402
+      }
+    },
+    {
+      "pixel": {
+        "x": 4155.0,
+        "y": 0.0
+      },
+      "gps": {
+        "latitude": 23.4563552,
+        "longitude": 120.27361377
+      }
+    },
+    {
+      "pixel": {
+        "x": 4155.0,
+        "y": 7924.0
+      },
+      "gps": {
+        "latitude": 23.45540155,
+        "longitude": 120.28224646
+      }
+    },
+    {
+      "pixel": {
+        "x": 0.0,
+        "y": 7924.0
+      },
+      "gps": {
+        "latitude": 23.45105801,
+        "longitude": 120.28163671
+      }
+    }
+  ],
+  "control_point_residuals": [
+    {
+      "name": "P1",
+      "pixel_x": 769.0,
+      "pixel_y": 325.0,
+      "expected_latitude": 23.452783,
+      "expected_longitude": 120.273426,
+      "predicted_latitude": 23.45277645,
+      "predicted_longitude": 120.27347094,
+      "error_m": 4.64679922
+    },
+    {
+      "name": "P2",
+      "pixel_x": 3883.0,
+      "pixel_y": 214.0,
+      "expected_latitude": 23.45604,
+      "expected_longitude": 120.273842,
+      "predicted_latitude": 23.45604511,
+      "predicted_longitude": 120.273807,
+      "error_m": 3.61964414
+    },
+    {
+      "name": "P3",
+      "pixel_x": 563.0,
+      "pixel_y": 5635.0,
+      "expected_latitude": 23.451916,
+      "expected_longitude": 120.279267,
+      "predicted_latitude": 23.45192204,
+      "predicted_longitude": 120.27922561,
+      "error_m": 4.28011493
+    },
+    {
+      "name": "P4",
+      "pixel_x": 3963.0,
+      "pixel_y": 7188.0,
+      "expected_latitude": 23.455294,
+      "expected_longitude": 120.281385,
+      "predicted_latitude": 23.45528941,
+      "predicted_longitude": 120.28141646,
+      "error_m": 3.25295954
+    }
+  ],
+  "error_summary_m": {
+    "max": 4.647,
+    "mean": 3.95,
+    "rms": 3.987
+  }
+}

@@ -9,11 +9,15 @@ import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
 
 
+DEFAULT_GEOREF_JSON = Path(
+    "georeferenced_maps/localize_ready_selected_roi/uav_selected_roi_compressed_georef.json"
+)
 DEFAULT_MAP_IMAGE = Path("衛星影像/aerial_gps_range_clean.png")
 DEFAULT_DRAW_OUTPUT = Path("stitched_outputs/georef/aerial_reference_grid.png")
 DEFAULT_MATCH_OUTPUT = Path("stitched_outputs/georef/match_result.png")
@@ -27,6 +31,12 @@ class GeoReference:
     south: float = 23.4478994
     west: float = 120.2700692
     east: float = 120.2932708
+    pixel_to_gps_affine: tuple[tuple[float, ...], ...] | None = None
+    gps_to_pixel_affine: tuple[tuple[float, ...], ...] | None = None
+    pixel_to_gps_homography: tuple[tuple[float, ...], ...] | None = None
+    gps_to_pixel_homography: tuple[tuple[float, ...], ...] | None = None
+    control_points: tuple[dict[str, Any], ...] = ()
+    source: str = "default_bounds"
 
     def contains_pixel(self, x: float, y: float) -> bool:
         return 0.0 <= x <= self.width and 0.0 <= y <= self.height
@@ -37,11 +47,45 @@ class GeoReference:
                 f"Pixel ({x:.2f}, {y:.2f}) is outside the map range "
                 f"0..{self.width}, 0..{self.height}"
             )
+        if self.pixel_to_gps_affine is not None:
+            matrix = np.array(self.pixel_to_gps_affine, dtype=np.float64)
+            mapped = matrix @ np.array([x, y, 1.0], dtype=np.float64)
+            longitude = float(mapped[0])
+            latitude = float(mapped[1])
+            return latitude, longitude
+        if self.pixel_to_gps_homography is not None:
+            matrix = np.array(self.pixel_to_gps_homography, dtype=np.float64)
+            mapped = cv2.perspectiveTransform(np.float32([[[x, y]]]), matrix).reshape(2)
+            longitude = float(mapped[0])
+            latitude = float(mapped[1])
+            return latitude, longitude
         longitude = self.west + (x / self.width) * (self.east - self.west)
         latitude = self.north - (y / self.height) * (self.north - self.south)
         return latitude, longitude
 
     def gps_to_pixel(self, latitude: float, longitude: float) -> tuple[float, float]:
+        if self.gps_to_pixel_affine is not None:
+            matrix = np.array(self.gps_to_pixel_affine, dtype=np.float64)
+            mapped = matrix @ np.array([longitude, latitude, 1.0], dtype=np.float64)
+            x = float(mapped[0])
+            y = float(mapped[1])
+            if not self.contains_pixel(x, y):
+                raise ValueError(
+                    f"GPS ({latitude:.7f}, {longitude:.7f}) maps outside the image "
+                    f"to pixel ({x:.2f}, {y:.2f})"
+                )
+            return x, y
+        if self.gps_to_pixel_homography is not None:
+            matrix = np.array(self.gps_to_pixel_homography, dtype=np.float64)
+            mapped = cv2.perspectiveTransform(np.float32([[[longitude, latitude]]]), matrix).reshape(2)
+            x = float(mapped[0])
+            y = float(mapped[1])
+            if not self.contains_pixel(x, y):
+                raise ValueError(
+                    f"GPS ({latitude:.7f}, {longitude:.7f}) maps outside the image "
+                    f"to pixel ({x:.2f}, {y:.2f})"
+                )
+            return x, y
         if not (self.south <= latitude <= self.north and self.west <= longitude <= self.east):
             raise ValueError(
                 f"GPS ({latitude:.7f}, {longitude:.7f}) is outside the configured map bounds"
@@ -64,8 +108,8 @@ KNOWN_POINTS = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Use 衛星影像/aerial_gps_range_clean.png as a georeferenced map. "
-            "Pixels are converted to WGS84 GPS within the configured map bounds."
+            "Convert pixels and GPS coordinates using the default compressed UAV "
+            "basemap, or another georeferenced map passed with --georef-json."
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -82,10 +126,12 @@ def parse_args() -> argparse.Namespace:
     )
 
     pixel_parser = subparsers.add_parser("pixel", help="Convert one map pixel to GPS")
+    add_georef_json_arg(pixel_parser)
     pixel_parser.add_argument("--x", type=float, required=True)
     pixel_parser.add_argument("--y", type=float, required=True)
 
     gps_parser = subparsers.add_parser("gps", help="Convert one GPS coordinate to map pixel")
+    add_georef_json_arg(gps_parser)
     gps_parser.add_argument("--lat", type=float, required=True)
     gps_parser.add_argument("--lon", type=float, required=True)
 
@@ -134,6 +180,15 @@ def parse_args() -> argparse.Namespace:
         help="Matching method. Default: auto",
     )
     match_parser.add_argument("--max-features", type=int, default=8000)
+    match_parser.add_argument(
+        "--feature-max-dim",
+        type=int,
+        default=1800,
+        help=(
+            "Downscale map/query images so their longest side is at most this "
+            "many pixels before feature matching. Use 0 to disable. Default: 1800"
+        ),
+    )
     match_parser.add_argument("--ratio", type=float, default=0.75)
     match_parser.add_argument("--min-matches", type=int, default=20)
     match_parser.add_argument("--min-inliers", type=int, default=10)
@@ -161,6 +216,85 @@ def add_map_args(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_MAP_IMAGE,
         help=f"Reference map image. Default: {DEFAULT_MAP_IMAGE}",
     )
+    add_georef_json_arg(parser)
+
+
+def add_georef_json_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--georef-json",
+        type=Path,
+        default=DEFAULT_GEOREF_JSON,
+        help=(
+            "Optional georeferenced basemap JSON generated by "
+            f"scripts/create_georeferenced_basemap.py. Default: {DEFAULT_GEOREF_JSON}"
+        ),
+    )
+
+
+def load_georef(path: Path | None = None) -> GeoReference:
+    if path is None:
+        return GeoReference()
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    image_info = payload.get("image", {})
+    georef_info = payload.get("georeference", {})
+    bounds = georef_info.get("bounds", {})
+    width = int(image_info.get("width", payload.get("width")))
+    height = int(image_info.get("height", payload.get("height")))
+    pixel_to_gps_affine = georef_info.get("pixel_to_gps_affine")
+    gps_to_pixel_affine = georef_info.get("gps_to_pixel_affine")
+    pixel_to_gps_homography = georef_info.get("pixel_to_gps_homography")
+    gps_to_pixel_homography = georef_info.get("gps_to_pixel_homography")
+    if (
+        (pixel_to_gps_affine is None or gps_to_pixel_affine is None)
+        and (pixel_to_gps_homography is None or gps_to_pixel_homography is None)
+    ):
+        raise ValueError(
+            f"{path} does not contain affine or homography georeference matrices"
+        )
+
+    return GeoReference(
+        width=width,
+        height=height,
+        north=float(bounds.get("north", 90.0)),
+        south=float(bounds.get("south", -90.0)),
+        west=float(bounds.get("west", -180.0)),
+        east=float(bounds.get("east", 180.0)),
+        pixel_to_gps_affine=matrix_tuple(pixel_to_gps_affine),
+        gps_to_pixel_affine=matrix_tuple(gps_to_pixel_affine),
+        pixel_to_gps_homography=matrix_tuple(pixel_to_gps_homography),
+        gps_to_pixel_homography=matrix_tuple(gps_to_pixel_homography),
+        control_points=tuple(payload.get("control_points", ())),
+        source=str(path),
+    )
+
+
+def matrix_tuple(raw_matrix: object | None) -> tuple[tuple[float, ...], ...] | None:
+    if raw_matrix is None:
+        return None
+    return tuple(tuple(float(value) for value in row) for row in raw_matrix)
+
+
+def map_image_from_georef(path: Path) -> Path | None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    raw_map_image = payload.get("map_image")
+    if not raw_map_image:
+        return None
+    map_image = Path(raw_map_image)
+    if map_image.exists() or map_image.is_absolute():
+        return map_image
+    candidate = path.parent / map_image
+    if candidate.exists():
+        return candidate
+    return map_image
+
+
+def resolve_map_image_path(args: argparse.Namespace) -> Path:
+    if args.georef_json is not None and args.map_image == DEFAULT_MAP_IMAGE:
+        map_image = map_image_from_georef(args.georef_json)
+        if map_image is not None:
+            return map_image
+    return args.map_image
 
 
 def read_bgr(path: Path) -> np.ndarray:
@@ -224,13 +358,34 @@ def draw_reference_map(
         f"W {georef.west:.7f}  E {georef.east:.7f}"
     )
     draw_label(output, label, (16, 30), (0, 0, 0), (255, 255, 255))
+    if georef.source != "default_bounds":
+        draw_label(output, f"georef: {georef.source}", (16, 58), (0, 0, 0), (255, 255, 255))
 
-    for name, ((x, y), (lat, lon)) in KNOWN_POINTS.items():
-        cv2.drawMarker(output, (x, y), (0, 0, 255), cv2.MARKER_CROSS, 24, 2, cv2.LINE_AA)
+    if georef.control_points:
+        points_to_draw = []
+        for point in georef.control_points:
+            pixel = point["pixel"]
+            gps = point["gps"]
+            points_to_draw.append(
+                (
+                    str(point.get("name", "")),
+                    (float(pixel["x"]), float(pixel["y"])),
+                    (float(gps["latitude"]), float(gps["longitude"])),
+                )
+            )
+    else:
+        points_to_draw = [
+            (name, (float(x), float(y)), (float(lat), float(lon)))
+            for name, ((x, y), (lat, lon)) in KNOWN_POINTS.items()
+        ]
+
+    for name, (x, y), (lat, lon) in points_to_draw:
+        point = (int(round(x)), int(round(y)))
+        cv2.drawMarker(output, point, (0, 0, 255), cv2.MARKER_CROSS, 24, 2, cv2.LINE_AA)
         draw_label(
             output,
-            f"{name} ({x},{y}) {lat:.5f},{lon:.5f}",
-            (x + 10, y - 10),
+            f"{name} ({point[0]},{point[1]}) {lat:.5f},{lon:.5f}",
+            (point[0] + 10, point[1] - 10),
             (0, 0, 0),
             (255, 255, 255),
         )
@@ -262,8 +417,8 @@ def draw_label(
 
 
 def command_draw_map(args: argparse.Namespace) -> None:
-    georef = GeoReference()
-    map_image = read_bgr(args.map_image)
+    georef = load_georef(args.georef_json)
+    map_image = read_bgr(resolve_map_image_path(args))
     ensure_map_size(map_image, georef)
     output = draw_reference_map(map_image, georef, args.grid_cols, args.grid_rows)
     write_image(args.output, output)
@@ -273,13 +428,13 @@ def command_draw_map(args: argparse.Namespace) -> None:
 
 
 def command_pixel(args: argparse.Namespace) -> None:
-    georef = GeoReference()
+    georef = load_georef(args.georef_json)
     latitude, longitude = georef.pixel_to_gps(args.x, args.y)
     print(json.dumps(pixel_result(args.x, args.y, latitude, longitude), ensure_ascii=False, indent=2))
 
 
 def command_gps(args: argparse.Namespace) -> None:
-    georef = GeoReference()
+    georef = load_georef(args.georef_json)
     x, y = georef.gps_to_pixel(args.lat, args.lon)
     print(
         json.dumps(
@@ -291,8 +446,8 @@ def command_gps(args: argparse.Namespace) -> None:
 
 
 def command_click(args: argparse.Namespace) -> None:
-    georef = GeoReference()
-    map_image = read_bgr(args.map_image)
+    georef = load_georef(args.georef_json)
+    map_image = read_bgr(resolve_map_image_path(args))
     ensure_map_size(map_image, georef)
     display = draw_reference_map(map_image, georef, 8, 5)
     write_image(args.output, display)
@@ -346,8 +501,8 @@ def pixel_result(x: float, y: float, latitude: float, longitude: float) -> dict[
 
 
 def command_match(args: argparse.Namespace) -> None:
-    georef = GeoReference()
-    map_image = read_bgr(args.map_image)
+    georef = load_georef(args.georef_json)
+    map_image = read_bgr(resolve_map_image_path(args))
     ensure_map_size(map_image, georef)
     original_query_image = read_bgr(args.query)
     query_roi = parse_query_roi(args.query_roi, original_query_image.shape)
@@ -403,6 +558,8 @@ def command_match(args: argparse.Namespace) -> None:
         report["matches"] = match_result["matches"]
     if "scale" in match_result:
         report["scale"] = match_result["scale"]
+    if "feature_scale" in match_result:
+        report["feature_scale"] = match_result["feature_scale"]
     if "orientation_scores" in match_result:
         report["orientation_scores"] = match_result["orientation_scores"]
     if warnings:
@@ -494,6 +651,7 @@ def match_single_orientation(
                     map_image,
                     query_image,
                     args.max_features,
+                    getattr(args, "feature_max_dim", 1800),
                     args.ratio,
                     args.min_matches,
                     args.min_inliers,
@@ -701,13 +859,16 @@ def feature_match(
     map_image: np.ndarray,
     query_image: np.ndarray,
     max_features: int,
+    feature_max_dim: int,
     ratio: float,
     min_matches: int,
     min_inliers: int,
 ) -> dict[str, object]:
     detector_name, detector, norm_type = create_feature_detector(max_features)
-    map_gray = cv2.cvtColor(map_image, cv2.COLOR_BGR2GRAY)
-    query_gray = cv2.cvtColor(query_image, cv2.COLOR_BGR2GRAY)
+    scaled_map, map_scale = resize_for_feature_match(map_image, feature_max_dim)
+    scaled_query, query_scale = resize_for_feature_match(query_image, feature_max_dim)
+    map_gray = cv2.cvtColor(scaled_map, cv2.COLOR_BGR2GRAY)
+    query_gray = cv2.cvtColor(scaled_query, cv2.COLOR_BGR2GRAY)
     map_keypoints, map_descriptors = detector.detectAndCompute(map_gray, None)
     query_keypoints, query_descriptors = detector.detectAndCompute(query_gray, None)
     if map_descriptors is None or query_descriptors is None:
@@ -727,12 +888,20 @@ def feature_match(
 
     query_points = np.float32([query_keypoints[match.queryIdx].pt for match in good_matches])
     map_points = np.float32([map_keypoints[match.trainIdx].pt for match in good_matches])
-    homography, inlier_mask = cv2.findHomography(query_points, map_points, cv2.RANSAC, 5.0)
-    if homography is None or inlier_mask is None:
+    ransac_threshold = max(3.0, 5.0 * min(map_scale, query_scale))
+    homography_scaled, inlier_mask = cv2.findHomography(
+        query_points,
+        map_points,
+        cv2.RANSAC,
+        ransac_threshold,
+    )
+    if homography_scaled is None or inlier_mask is None:
         raise RuntimeError("Could not estimate query-to-map homography")
     inliers = int(inlier_mask.sum())
     if inliers < min_inliers:
         raise RuntimeError(f"Only {inliers} RANSAC inliers; need {min_inliers}")
+
+    homography = rescale_homography(homography_scaled, query_scale, map_scale)
 
     query_height, query_width = query_image.shape[:2]
     query_corners = np.float32(
@@ -745,6 +914,7 @@ def feature_match(
 
     if not point_inside_image(center, map_image):
         raise RuntimeError("Feature match center landed outside the map")
+    validate_match_geometry(map_corners, query_width, query_height, map_image)
 
     return {
         "method": f"feature:{detector_name}",
@@ -754,7 +924,54 @@ def feature_match(
         "matches": len(good_matches),
         "inliers": inliers,
         "homography": homography,
+        "feature_scale": {"map": round(map_scale, 5), "query": round(query_scale, 5)},
     }
+
+
+def resize_for_feature_match(image: np.ndarray, feature_max_dim: int) -> tuple[np.ndarray, float]:
+    if feature_max_dim <= 0:
+        return image, 1.0
+    height, width = image.shape[:2]
+    longest_side = max(width, height)
+    if longest_side <= feature_max_dim:
+        return image, 1.0
+    scale = feature_max_dim / float(longest_side)
+    resized = cv2.resize(
+        image,
+        (max(1, int(round(width * scale))), max(1, int(round(height * scale)))),
+        interpolation=cv2.INTER_AREA,
+    )
+    return resized, scale
+
+
+def rescale_homography(homography_scaled: np.ndarray, query_scale: float, map_scale: float) -> np.ndarray:
+    query_to_scaled = np.array([[query_scale, 0, 0], [0, query_scale, 0], [0, 0, 1]], dtype=np.float64)
+    scaled_to_map = np.array([[1 / map_scale, 0, 0], [0, 1 / map_scale, 0], [0, 0, 1]], dtype=np.float64)
+    return scaled_to_map @ homography_scaled @ query_to_scaled
+
+
+def validate_match_geometry(
+    map_corners: np.ndarray,
+    query_width: int,
+    query_height: int,
+    map_image: np.ndarray,
+) -> None:
+    corner_points = map_corners.astype(np.float32)
+    area = abs(float(cv2.contourArea(corner_points)))
+    query_area = max(1.0, float(query_width * query_height))
+    map_area = max(1.0, float(map_image.shape[0] * map_image.shape[1]))
+    if area < query_area * 0.0005:
+        raise RuntimeError("Feature match projected area is implausibly small")
+    if area > map_area * 0.85:
+        raise RuntimeError("Feature match projected area is implausibly large")
+
+    x, y, width, height = cv2.boundingRect(corner_points.astype(np.int32))
+    if width <= 0 or height <= 0:
+        raise RuntimeError("Feature match produced a degenerate bounding box")
+    aspect = width / float(height)
+    query_aspect = query_width / float(query_height)
+    if aspect < query_aspect / 6.0 or aspect > query_aspect * 6.0:
+        raise RuntimeError("Feature match projected aspect ratio is implausible")
 
 
 def create_feature_detector(max_features: int) -> tuple[str, object, int]:

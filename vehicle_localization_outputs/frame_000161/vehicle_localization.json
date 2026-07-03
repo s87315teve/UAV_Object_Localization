@@ -1,85 +1,89 @@
 {
   "frame": "test_image/frame_000161.jpg",
-  "map_image": "衛星影像/aerial_gps_range_clean.png",
+  "map_image": "georeferenced_maps/localize_ready_selected_roi/uav_selected_roi_basemap_compressed.jpg",
   "detector": "yolo",
   "yolo_model": "yolo26l.pt",
   "detections_count": 1,
   "map_match": {
-    "method": "template",
-    "score": 0.4479,
+    "method": "feature:sift",
+    "score": 0.5079,
     "orientation": "identity",
     "center_pixel": {
-      "x": 574.0,
-      "y": 434.0
+      "x": 2644.229,
+      "y": 67.264
     },
     "corners_pixel": [
       {
-        "x": 497.0,
-        "y": 391.0
+        "x": 1977.748,
+        "y": -292.704
       },
       {
-        "x": 650.0,
-        "y": 391.0
+        "x": 3297.79,
+        "y": -311.161
       },
       {
-        "x": 650.0,
-        "y": 476.0
+        "x": 3314.321,
+        "y": 429.031
       },
       {
-        "x": 497.0,
-        "y": 476.0
+        "x": 1962.326,
+        "y": 461.547
       }
     ],
     "orientation_scores": [
       {
+        "orientation": "rotate180",
+        "method": "feature:sift",
+        "score": 0.5323
+      },
+      {
         "orientation": "rotate90_cw",
-        "method": "template",
-        "score": 0.4953
+        "method": "feature:sift",
+        "score": 0.5303
       },
       {
         "orientation": "identity",
-        "method": "template",
-        "score": 0.4479
+        "method": "feature:sift",
+        "score": 0.5079
       },
       {
         "orientation": "rotate90_ccw",
-        "method": "template",
-        "score": 0.4461
-      },
-      {
-        "orientation": "rotate180",
-        "method": "template",
-        "score": 0.4135
+        "method": "feature:sift",
+        "score": 0.5
       }
-    ]
+    ],
+    "feature_scale": {
+      "map": 0.22713,
+      "query": 0.46875
+    }
   },
   "vehicles": [
     {
       "vehicle_id": "veh_001",
       "class_name": "car",
-      "confidence": 0.3291,
-      "detector": "yolo:yolo26l.pt:tile_x2",
+      "confidence": 0.3203,
+      "detector": "yolo:yolo26l.pt:tile_x1",
       "bbox_xyxy": [
-        3326.73,
-        1320.546,
-        3450.745,
-        1391.302
+        3326.301,
+        1320.605,
+        3450.705,
+        1391.246
       ],
       "center_image_pixel": {
-        "x": 3388.738,
-        "y": 1355.924
+        "x": 3388.503,
+        "y": 1355.926
       },
       "map_pixel": {
-        "x": 632.55,
-        "y": 445.237
+        "x": 3153.331,
+        "y": 152.726
       },
       "gps": {
-        "latitude": 23.45368624,
-        "longitude": 120.2792418
+        "latitude": 23.4552897,
+        "longitude": 120.27363316
       },
       "twd97": {
-        "x": 176361.335,
-        "y": 2594706.932
+        "x": 175789.184,
+        "y": 2594887.389
       },
       "crop": "vehicle_localization_outputs/frame_000161/crops/veh_001.jpg"
     }
@@ -92,11 +96,7 @@
     "csv": "vehicle_localization_outputs/frame_000161/vehicle_localization.csv"
   },
   "warnings": [
-    "identity: Low template score 0.4479 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
-    "rotate180: Low template score 0.4135 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
-    "rotate90_ccw: Low template score 0.4461 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
-    "Best rotated orientation score did not exceed identity by 0.080; kept identity to avoid a weak texture false match.",
-    "Map template score is below threshold; treat map coordinates as rough demo output."
+    "Best rotated orientation score did not exceed identity by 0.080; kept identity to avoid a weak texture false match."
   ],
   "deferred_work": [
     "Train or fine-tune a competition-specific detector for the roof marker X.",

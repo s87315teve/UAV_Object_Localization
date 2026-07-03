@@ -1,0 +1,157 @@
+{
+  "schema": "uav_object_localization.georeferenced_basemap.v1",
+  "created_at": "2026-07-03T03:35:12.427169+00:00",
+  "source_image": "/Users/chiu/Desktop/my_github/UAV_Object_Localization/georeferenced_maps/selected_roi/basemap.png",
+  "map_image": "uav_selected_roi_basemap_compressed.jpg",
+  "image": {
+    "width": 4156,
+    "height": 7925
+  },
+  "crs": "EPSG:4326",
+  "georeference": {
+    "model": "pixel_to_wgs84_affine",
+    "pixel_axis": {
+      "x": "image column",
+      "y": "image row"
+    },
+    "gps_axis": {
+      "x": "longitude",
+      "y": "latitude"
+    },
+    "fit": "least_squares_from_4_control_points",
+    "pixel_to_gps_affine": [
+      [
+        1.4675181739699422e-07,
+        1.0894355288099338e-06,
+        120.27300401857106
+      ],
+      [
+        1.0453760957654048e-06,
+        -1.2035047404005403e-07,
+        23.452011665306806
+      ]
+    ],
+    "gps_to_pixel_affine": [
+      [
+        104065.71849220482,
+        941983.0950967399,
+        -34607695.12553204
+      ],
+      [
+        903773.9327311,
+        -126832.24349344928,
+        -105725134.24635853
+      ]
+    ],
+    "bounds": {
+      "north": 23.45635520298471,
+      "south": 23.45105800815051,
+      "west": 120.27300401857106,
+      "east": 120.28224645950263
+    },
+    "control_point_bounds": {
+      "north": 23.45604,
+      "south": 23.451916,
+      "west": 120.273426,
+      "east": 120.281385
+    },
+    "image_corners_gps": [
+      {
+        "pixel": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "gps": {
+          "latitude": 23.45201167,
+          "longitude": 120.27300402
+        }
+      },
+      {
+        "pixel": {
+          "x": 4155.0,
+          "y": 0.0
+        },
+        "gps": {
+          "latitude": 23.4563552,
+          "longitude": 120.27361377
+        }
+      },
+      {
+        "pixel": {
+          "x": 4155.0,
+          "y": 7924.0
+        },
+        "gps": {
+          "latitude": 23.45540155,
+          "longitude": 120.28224646
+        }
+      },
+      {
+        "pixel": {
+          "x": 0.0,
+          "y": 7924.0
+        },
+        "gps": {
+          "latitude": 23.45105801,
+          "longitude": 120.28163671
+        }
+      }
+    ]
+  },
+  "control_points": [
+    {
+      "name": "P1",
+      "pixel": {
+        "x": 769.0,
+        "y": 325.0
+      },
+      "gps": {
+        "latitude": 23.452783,
+        "longitude": 120.273426
+      }
+    },
+    {
+      "name": "P2",
+      "pixel": {
+        "x": 3883.0,
+        "y": 214.0
+      },
+      "gps": {
+        "latitude": 23.45604,
+        "longitude": 120.273842
+      }
+    },
+    {
+      "name": "P3",
+      "pixel": {
+        "x": 563.0,
+        "y": 5635.0
+      },
+      "gps": {
+        "latitude": 23.451916,
+        "longitude": 120.279267
+      }
+    },
+    {
+      "name": "P4",
+      "pixel": {
+        "x": 3963.0,
+        "y": 7188.0
+      },
+      "gps": {
+        "latitude": 23.455294,
+        "longitude": 120.281385
+      }
+    }
+  ],
+  "outputs": {
+    "preview": "uav_selected_roi_preview.jpg",
+    "control_points_csv": "uav_selected_roi_control_points.csv"
+  },
+  "packaged_at": "2026-07-03T03:41:24.995574+00:00",
+  "compression": {
+    "format": "JPEG",
+    "quality": 82,
+    "same_pixel_dimensions_as_original": true
+  }
+}

@@ -1,201 +1,205 @@
 {
   "frame": "test_image/frame_000051.jpg",
-  "map_image": "衛星影像/aerial_gps_range_clean.png",
+  "map_image": "georeferenced_maps/localize_ready_selected_roi/uav_selected_roi_basemap_compressed.jpg",
   "detector": "yolo",
   "yolo_model": "yolo26l.pt",
   "detections_count": 5,
   "map_match": {
-    "method": "template",
-    "score": 0.3631,
+    "method": "feature:sift",
+    "score": 0.4962,
     "orientation": "identity",
     "center_pixel": {
-      "x": 1089.0,
-      "y": 612.0
+      "x": 590.772,
+      "y": 2632.714
     },
     "corners_pixel": [
       {
-        "x": 1012.0,
-        "y": 569.0
+        "x": -85.954,
+        "y": 2252.22
       },
       {
-        "x": 1165.0,
-        "y": 569.0
+        "x": 1266.061,
+        "y": 2266.839
       },
       {
-        "x": 1165.0,
-        "y": 654.0
+        "x": 1256.533,
+        "y": 3006.894
       },
       {
-        "x": 1012.0,
-        "y": 654.0
+        "x": -75.537,
+        "y": 2993.191
       }
     ],
     "orientation_scores": [
       {
+        "orientation": "identity",
+        "method": "feature:sift",
+        "score": 0.4962
+      },
+      {
         "orientation": "rotate90_cw",
-        "method": "template",
-        "score": 0.3967
+        "method": "feature:sift",
+        "score": 0.4917
       },
       {
         "orientation": "rotate90_ccw",
-        "method": "template",
-        "score": 0.37
-      },
-      {
-        "orientation": "identity",
-        "method": "template",
-        "score": 0.3631
+        "method": "feature:sift",
+        "score": 0.4766
       },
       {
         "orientation": "rotate180",
-        "method": "template",
-        "score": 0.333
+        "method": "feature:sift",
+        "score": 0.4711
       }
-    ]
+    ],
+    "feature_scale": {
+      "map": 0.22713,
+      "query": 0.46875
+    }
   },
   "vehicles": [
     {
       "vehicle_id": "veh_001",
       "class_name": "car",
-      "confidence": 0.6758,
+      "confidence": 0.6757,
       "detector": "yolo:yolo26l.pt:tile_x1",
       "bbox_xyxy": [
-        2426.163,
-        1178.079,
-        2478.979,
+        2426.165,
+        1178.068,
+        2478.98,
         1301.316
       ],
       "center_image_pixel": {
-        "x": 2452.571,
-        "y": 1239.698
+        "x": 2452.572,
+        "y": 1239.692
       },
       "map_pixel": {
-        "x": 1110.103,
-        "y": 618.588
+        "x": 776.742,
+        "y": 2689.377
       },
       "gps": {
-        "latitude": 23.45187799,
-        "longitude": 120.2861668
+        "latitude": 23.45249998,
+        "longitude": 120.27604791
       },
       "twd97": {
-        "x": 177067.883,
-        "y": 2594503.151
+        "x": 176034.348,
+        "y": 2594577.197
       },
       "crop": "vehicle_localization_outputs/frame_000051/crops/veh_001.jpg"
     },
     {
       "vehicle_id": "veh_002",
       "class_name": "car",
-      "confidence": 0.4187,
+      "confidence": 0.4183,
       "detector": "yolo:yolo26l.pt:tile_x1",
       "bbox_xyxy": [
-        2960.639,
-        1200.165,
-        3016.396,
-        1298.564
+        2960.64,
+        1200.168,
+        3016.402,
+        1298.536
       ],
       "center_image_pixel": {
-        "x": 2988.518,
-        "y": 1249.365
+        "x": 2988.521,
+        "y": 1249.352
       },
       "map_pixel": {
-        "x": 1131.541,
-        "y": 618.975
+        "x": 963.785,
+        "y": 2694.647
       },
       "gps": {
-        "latitude": 23.45187395,
-        "longitude": 120.28647767
+        "latitude": 23.45269488,
+        "longitude": 120.2760811
       },
       "twd97": {
-        "x": 177099.643,
-        "y": 2594502.547
+        "x": 176037.847,
+        "y": 2594598.764
       },
       "crop": "vehicle_localization_outputs/frame_000051/crops/veh_002.jpg"
     },
     {
       "vehicle_id": "veh_003",
       "class_name": "car",
-      "confidence": 0.3806,
+      "confidence": 0.3807,
       "detector": "yolo:yolo26l.pt:tile_x1",
       "bbox_xyxy": [
-        2262.651,
-        720.383,
-        2343.354,
-        804.603
+        2262.65,
+        720.382,
+        2343.346,
+        804.602
       ],
       "center_image_pixel": {
-        "x": 2303.003,
-        "y": 762.493
+        "x": 2302.998,
+        "y": 762.492
       },
       "map_pixel": {
-        "x": 1104.12,
-        "y": 599.5
+        "x": 724.87,
+        "y": 2525.006
       },
       "gps": {
-        "latitude": 23.4520771,
-        "longitude": 120.28608005
+        "latitude": 23.45246554,
+        "longitude": 120.27586123
       },
       "twd97": {
-        "x": 177059.128,
-        "y": 2594525.246
+        "x": 176015.254,
+        "y": 2594573.479
       },
       "crop": "vehicle_localization_outputs/frame_000051/crops/veh_003.jpg"
     },
     {
       "vehicle_id": "veh_004",
       "class_name": "car",
-      "confidence": 0.2593,
-      "detector": "yolo:yolo26l.pt:tile_x2",
+      "confidence": 0.2466,
+      "detector": "yolo:yolo26l.pt:tile_x1",
       "bbox_xyxy": [
-        3043.762,
-        901.343,
-        3107.697,
-        944.793
+        3043.803,
+        901.311,
+        3107.722,
+        944.788
       ],
       "center_image_pixel": {
-        "x": 3075.73,
-        "y": 923.068
+        "x": 3075.763,
+        "y": 923.049
       },
       "map_pixel": {
-        "x": 1135.029,
-        "y": 605.923
+        "x": 995.071,
+        "y": 2583.107
       },
       "gps": {
-        "latitude": 23.4520101,
-        "longitude": 120.28652826
+        "latitude": 23.45274101,
+        "longitude": 120.27596418
       },
       "twd97": {
-        "x": 177104.887,
-        "y": 2594517.599
+        "x": 176025.927,
+        "y": 2594603.933
       },
       "crop": "vehicle_localization_outputs/frame_000051/crops/veh_004.jpg"
     },
     {
       "vehicle_id": "veh_005",
       "class_name": "truck",
-      "confidence": 0.2395,
+      "confidence": 0.2404,
       "detector": "yolo:yolo26l.pt:tile_x1",
       "bbox_xyxy": [
-        2333.789,
-        725.302,
-        2691.04,
-        1234.25
+        2333.797,
+        725.277,
+        2691.069,
+        1234.19
       ],
       "center_image_pixel": {
-        "x": 2512.414,
-        "y": 979.776
+        "x": 2512.433,
+        "y": 979.733
       },
       "map_pixel": {
-        "x": 1112.497,
-        "y": 608.191
+        "x": 797.956,
+        "y": 2600.493
       },
       "gps": {
-        "latitude": 23.45198644,
-        "longitude": 120.28620151
+        "latitude": 23.45253286,
+        "longitude": 120.27595419
       },
       "twd97": {
-        "x": 177071.489,
-        "y": 2594515.144
+        "x": 176024.79,
+        "y": 2594580.886
       },
       "crop": "vehicle_localization_outputs/frame_000051/crops/veh_005.jpg"
     }
@@ -207,14 +211,7 @@
     "json": "vehicle_localization_outputs/frame_000051/vehicle_localization.json",
     "csv": "vehicle_localization_outputs/frame_000051/vehicle_localization.csv"
   },
-  "warnings": [
-    "identity: Low template score 0.3631 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
-    "rotate90_cw: Low template score 0.3967 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
-    "rotate180: Low template score 0.333 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
-    "rotate90_ccw: Low template score 0.37 < 0.45. Treat this as a rough guess; use --query-roi around stable landmarks or provide a rough candidate area before trusting the GPS.",
-    "Best rotated orientation score did not exceed identity by 0.080; kept identity to avoid a weak texture false match.",
-    "Map template score is below threshold; treat map coordinates as rough demo output."
-  ],
+  "warnings": [],
   "deferred_work": [
     "Train or fine-tune a competition-specific detector for the roof marker X.",
     "Use drone GPS/IMU or manually selected stable-landmark ROI to constrain map matching.",
