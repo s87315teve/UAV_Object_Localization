@@ -10,12 +10,12 @@ Output files:
 
 The generator downsamples video03, lowers frame rate, adds blur/noise/JPEG artifacts, and encodes with a low H.264 bitrate. It pastes one target vehicle into every output frame. The target vehicle uses the same red marker with a thick white X style as `scripts/generate_target_verifier_test_data.py`.
 
-By default the pasted vehicle is the real white-car crop at `vehicle_localization_outputs/frame_000051/crops/veh_001.jpg`; the script preserves the crop RGB content and only removes the crop background before adding the target marker.
+By default the pasted vehicle is the real white-car crop at `vehicle_localization_outputs/frame_000051/crops/veh_001.jpg`; the script preserves the crop RGB content and only removes the crop background before adding the target marker. The default target long side is now 59 px, half of the older 118 px setting.
 
 Regenerate:
 
 ```bash
-python scripts/generate_video03_target_test_video.py --overwrite
+python scripts/generate_video03_target_test_video.py --target-long-side 59 --overwrite
 ```
 
 The script verifies that the output MP4 is below `--max-size-mb` before writing metadata. Use `--bitrate`, `--fps`, or `--output-width` to make the file smaller if needed.

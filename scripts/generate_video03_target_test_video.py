@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fps", type=float, default=12.0)
     parser.add_argument("--bitrate", default="900k")
     parser.add_argument("--max-size-mb", type=float, default=30.0)
-    parser.add_argument("--target-long-side", type=int, default=118)
+    parser.add_argument("--target-long-side", type=int, default=59)
     parser.add_argument("--jpeg-quality", type=int, default=34)
     parser.add_argument("--noise-sigma", type=float, default=5.0)
     parser.add_argument("--blur-radius", type=float, default=1.1)
@@ -295,6 +295,7 @@ def main() -> int:
         "output_size_mb": round(size_bytes / 1024 / 1024, 3),
         "max_size_mb": args.max_size_mb,
         "target_car_crop": str(args.target_car),
+        "target_long_side": args.target_long_side,
         "target_marker_style": marker_style,
         "degradation": {
             "downscale_then_upscale": 0.64,

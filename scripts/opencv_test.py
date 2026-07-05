@@ -23,6 +23,7 @@ os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "stream_outputs"
 DEFAULT_SOURCE = "stream.sdp"
+LOOPABLE_VIDEO_EXTENSIONS = {".avi", ".m4v", ".mkv", ".mov", ".mp4"}
 cv2 = None
 
 
@@ -48,6 +49,13 @@ class Button:
     label: str
     rect: tuple[int, int, int, int]
     enabled: bool = True
+
+
+@dataclass
+class LocalizationJob:
+    process: subprocess.Popen
+    frame_path: Path
+    output_dir: Path
 
 
 class SegmentRecorder:
@@ -132,6 +140,20 @@ def parse_args() -> argparse.Namespace:
         help="Seconds between automatic saved frames. Use 0 to disable. Default: 2.0",
     )
     parser.add_argument(
+        "--loop-source",
+        action="store_true",
+        help=(
+            "When the source is a local video file, restart it from the beginning "
+            "after EOF. Use Quit, Esc, or Ctrl-C to stop."
+        ),
+    )
+    parser.add_argument(
+        "--record",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Record the displayed source under <output-root>/recordings. Default: disabled.",
+    )
+    parser.add_argument(
         "--record-fps",
         type=float,
         default=30.0,
@@ -150,6 +172,18 @@ def parse_args() -> argparse.Namespace:
         "--window-name",
         default="UAV stream",
         help="OpenCV display window name.",
+    )
+    parser.add_argument(
+        "--window-width",
+        type=int,
+        default=1600,
+        help="Initial display window width in pixels. Default: 1600",
+    )
+    parser.add_argument(
+        "--window-height",
+        type=int,
+        default=900,
+        help="Initial display window height in pixels. Default: 900",
     )
     parser.add_argument(
         "--localize-device",
@@ -194,6 +228,20 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Output root for shortcut localization. Default: <output-root>/detections",
+    )
+    parser.add_argument(
+        "--show-detection-result",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Show 03_process_overview.jpg in a separate OpenCV window after a Detect "
+            "localization job finishes. Default: enabled."
+        ),
+    )
+    parser.add_argument(
+        "--result-window-name",
+        default="UAV localization result",
+        help="OpenCV window name for the latest Detect result.",
     )
     parser.add_argument(
         "--target-verifier",
@@ -256,6 +304,13 @@ def open_capture(source: ResolvedSource, backend: str) -> cv2.VideoCapture:
     return cap
 
 
+def is_loopable_video_file(source: ResolvedSource) -> bool:
+    if not isinstance(source.value, str):
+        return False
+    path = Path(source.value)
+    return path.is_file() and path.suffix.lower() in LOOPABLE_VIDEO_EXTENSIONS
+
+
 def source_fps(cap: cv2.VideoCapture, fallback_fps: float) -> float:
     fps = cap.get(cv2.CAP_PROP_FPS)
     if fps and fps > 1:
@@ -276,7 +331,7 @@ def save_frame(frame, output_dir: Path, prefix: str) -> Path:
     return path
 
 
-def start_localization(frame_path: Path, args: argparse.Namespace) -> subprocess.Popen:
+def start_localization(frame_path: Path, args: argparse.Namespace) -> LocalizationJob:
     output_root = args.localize_output_root or (args.output_root / "detections")
     output_dir = output_root / frame_path.stem
     command = [
@@ -315,16 +370,44 @@ def start_localization(frame_path: Path, args: argparse.Namespace) -> subprocess
         )
     print(f"Running localization: {frame_path}")
     print(f"Localization output: {output_dir}")
-    return subprocess.Popen(command, cwd=str(REPO_ROOT))
+    process = subprocess.Popen(command, cwd=str(REPO_ROOT))
+    return LocalizationJob(process=process, frame_path=frame_path, output_dir=output_dir)
 
 
-def reap_finished_job(job: subprocess.Popen | None) -> subprocess.Popen | None:
+def localization_result_image(output_dir: Path) -> Path | None:
+    for name in ("03_process_overview.jpg", "01_frame_vehicle_detections.jpg", "02_map_vehicle_coordinates.jpg"):
+        path = output_dir / name
+        if path.is_file():
+            return path
+    return None
+
+
+def show_localization_result(job: LocalizationJob, args: argparse.Namespace) -> None:
+    if not args.show_detection_result:
+        return
+    result_path = localization_result_image(job.output_dir)
+    if result_path is None:
+        print(f"No localization result image found under: {job.output_dir}")
+        return
+    image = cv2.imread(str(result_path))
+    if image is None:
+        print(f"Cannot read localization result image: {result_path}")
+        return
+    cv2.namedWindow(args.result_window_name, cv2.WINDOW_NORMAL)
+    cv2.imshow(args.result_window_name, image)
+    cv2.waitKey(1)
+    print(f"Showing localization result: {result_path}")
+
+
+def reap_finished_job(job: LocalizationJob | None, args: argparse.Namespace) -> LocalizationJob | None:
     if job is None:
         return None
-    returncode = job.poll()
+    returncode = job.process.poll()
     if returncode is None:
         return job
     print(f"Localization job finished with return code {returncode}")
+    if returncode == 0:
+        show_localization_result(job, args)
     return None
 
 
@@ -404,21 +487,30 @@ def draw_status(frame, source_label: str, detection_running: bool) -> tuple[obje
 def main() -> int:
     args = parse_args()
     load_cv2()
+    if args.window_width <= 0 or args.window_height <= 0:
+        raise ValueError("--window-width and --window-height must be greater than 0")
     args.output_root = args.output_root.expanduser().resolve()
     if args.localize_output_root is not None:
         args.localize_output_root = args.localize_output_root.expanduser().resolve()
 
     source = resolve_source(args.source)
     cap = open_capture(source, args.backend)
+    loop_enabled = args.loop_source and is_loopable_video_file(source)
+    if args.loop_source and not loop_enabled:
+        print("--loop-source is only supported for local video files; continuing without looping.")
     fps = source_fps(cap, args.record_fps)
-    recorder = SegmentRecorder(
-        args.output_root / "recordings",
-        fps=fps,
-        segment_seconds=args.record_segment_seconds,
+    recorder = (
+        SegmentRecorder(
+            args.output_root / "recordings",
+            fps=fps,
+            segment_seconds=args.record_segment_seconds,
+        )
+        if args.record
+        else None
     )
     periodic_dir = args.output_root / "frames"
     manual_dir = args.output_root / "manual_frames"
-    localization_job: subprocess.Popen | None = None
+    localization_job: LocalizationJob | None = None
     running = True
     last_periodic_save = 0.0
     current_buttons: list[Button] = []
@@ -437,10 +529,14 @@ def main() -> int:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     cv2.namedWindow(args.window_name, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(args.window_name, args.window_width, args.window_height)
     cv2.setMouseCallback(args.window_name, on_mouse)
 
     print(f"Opened source: {source.label}")
-    print(f"Recording FPS: {fps:.2f}")
+    if args.record:
+        print(f"Recording FPS: {fps:.2f}")
+    else:
+        print("Recording disabled")
     print(f"Outputs: {args.output_root}")
     print("Buttons: Save Frame, Detect, Quit")
 
@@ -448,12 +544,19 @@ def main() -> int:
         while running:
             ok, frame = cap.read()
             if not ok:
+                if loop_enabled:
+                    print("Reached end of video; restarting source.")
+                    cap.release()
+                    cap = open_capture(source, args.backend)
+                    localization_job = reap_finished_job(localization_job, args)
+                    continue
                 print("No frame received")
                 time.sleep(0.05)
-                localization_job = reap_finished_job(localization_job)
+                localization_job = reap_finished_job(localization_job, args)
                 continue
 
-            recorder.write(frame)
+            if recorder is not None:
+                recorder.write(frame)
 
             now = time.monotonic()
             if args.frame_interval > 0 and now - last_periodic_save >= args.frame_interval:
@@ -461,7 +564,7 @@ def main() -> int:
                 print(f"Saved periodic frame: {path}")
                 last_periodic_save = now
 
-            localization_job = reap_finished_job(localization_job)
+            localization_job = reap_finished_job(localization_job, args)
             detection_running = localization_job is not None
             display_frame, current_buttons = draw_status(frame, source.label, detection_running)
             cv2.imshow(args.window_name, display_frame)
@@ -481,10 +584,11 @@ def main() -> int:
                 localization_job = start_localization(path, args)
     finally:
         cap.release()
-        recorder.release()
+        if recorder is not None:
+            recorder.release()
         cv2.destroyAllWindows()
-        if localization_job is not None and localization_job.poll() is None:
-            print(f"Localization job still running: pid={localization_job.pid}")
+        if localization_job is not None and localization_job.process.poll() is None:
+            print(f"Localization job still running: pid={localization_job.process.pid}")
 
     return 0
 

@@ -7,6 +7,8 @@
 完整流程說明請見 [docs/drone_vehicle_geolocation_workflow.md](docs/drone_vehicle_geolocation_workflow.md)。
 目標車 verifier 的資料增強與測試指令請見
 [docs/target_verifier_test_cases.md](docs/target_verifier_test_cases.md)。
+帶目標車的影片測試資料說明請見
+[docs/video03_target_test_video.md](docs/video03_target_test_video.md)。
 
 ## 專案要解決的問題
 
@@ -114,6 +116,216 @@ python3 scripts/extract_frames.py \
 ```
 
 如果輸出資料夾已經有檔案，腳本會停止以避免覆蓋或混入舊資料。確定要寫入既有資料夾時再加上 `--overwrite`。
+
+## OpenCV 影片輸入與比賽流程測試
+
+比賽展示時建議用 `scripts/opencv_test.py` 測整條影片輸入路徑。這支程式會開 OpenCV 視窗讀 `stream.sdp`、影片檔、webcam 或 URL，同時錄影、定期存 frame；按視窗上的 `Detect` 按鈕時，會把當下 frame 送進 `scripts/localize_vehicles.py` 做 YOLO + target verifier。
+
+若要產生一支帶目標白車的低畫質測試影片，使用：
+
+```bash
+conda run -n uav_contest_env python scripts/generate_video03_target_test_video.py \
+  --input-video raw_videos/video03.MP4 \
+  --output-video augmented_test_data/videos/video03_target_low_quality.mp4 \
+  --target-car vehicle_localization_outputs/frame_000051/crops/veh_001.jpg \
+  --output-width 1280 \
+  --fps 12 \
+  --bitrate 900k \
+  --max-size-mb 30 \
+  --target-long-side 59 \
+  --jpeg-quality 34 \
+  --noise-sigma 5.0 \
+  --blur-radius 1.1 \
+  --seed 20260705 \
+  --overwrite
+```
+
+這支腳本會使用 `scripts/generate_target_verifier_test_data.py` 內相同的白車 crop alpha 方法與紅底白色粗叉叉 marker 生成方法。預設輸出：
+
+```text
+augmented_test_data/videos/video03_target_low_quality.mp4
+augmented_test_data/videos/video03_target_low_quality.metadata.json
+augmented_test_data/videos/video03_target_low_quality.preview.jpg
+```
+
+`--target-long-side 59` 會讓貼上的目標車長寬約為舊版 `118` 設定的一半，比較接近遠距離小車測試。
+
+先用這支測試影片確認 OpenCV 視窗、錄影、手動觸發辨識都能 work。OpenCV 視窗會用可調整模式開啟，下面指令會先開成 `1600 x 900`，之後仍可手動拉伸。Apple Silicon 用 `--localize-device mps`，NVIDIA GPU 改成 `--localize-device cuda:0`：
+
+```bash
+conda run -n uav_contest_env python scripts/opencv_test.py \
+  --source augmented_test_data/videos/video03_target_low_quality.mp4 \
+  --backend ffmpeg \
+  --loop-source \
+  --window-width 1600 \
+  --window-height 900 \
+  --output-root stream_outputs/video03_target_opencv_test \
+  --frame-interval 1 \
+  --record \
+  --record-segment-seconds 120 \
+  --show-detection-result \
+  --localize-device mps \
+  --localize-model yolo26x.pt \
+  --localize-vehicle-classes car \
+  --localize-imgsz 1280 \
+  --localize-tile-upscales 1,2 \
+  --localize-yolo-batch-size 4 \
+  --localize-conf 0.12 \
+  --target-verifier \
+  --target-verifier-min-score 0.18 \
+  --target-verifier-min-white-ratio 0.15 \
+  --target-verifier-min-red-pixels 35
+```
+
+視窗按鈕用途：
+
+- `Save Frame`：把目前畫面存到 `<output-root>/manual_frames/`。
+- `Detect`：存下目前畫面，並在背景執行一次定位辨識；完成後會自動顯示 `03_process_overview.jpg`。
+- `Quit` 或 `Esc`：關閉視窗。
+
+辨識輸出會在：
+
+```text
+stream_outputs/video03_target_opencv_test/detections/<detect_frame_name>/
+├── 01_frame_vehicle_detections.jpg
+├── 02_map_vehicle_coordinates.jpg
+├── 03_process_overview.jpg
+├── vehicle_localization.json
+└── vehicle_localization.csv
+```
+
+常用參數效果：
+
+| 參數 | 效果 |
+| --- | --- |
+| `--source` | OpenCV 影片來源，可用本機影片、`stream.sdp`、`0` webcam 或 RTSP/UDP/HTTP URL。 |
+| `--backend` | OpenCV 讀取後端；影片檔、SDP、RTSP/UDP 通常用 `ffmpeg`，webcam 用 `default`。 |
+| `--loop-source` | 只對本機影片檔有效；影片讀到結尾後自動從頭重播，直到按 `Quit`、`Esc` 或 `Ctrl-C`。 |
+| `--window-width` / `--window-height` | OpenCV 主視窗初始大小；視窗使用可調整模式，開啟後仍可手動拉伸。 |
+| `--output-root` | 錄影、定期 frames、手動 frames、Detect 辨識結果的根目錄。 |
+| `--frame-interval` | 每隔幾秒自動存一張 frame；設 `0` 可關閉自動存圖。 |
+| `--record` / `--no-record` | 是否將來源畫面錄成影片存到 `<output-root>/recordings/`；預設關閉，需要錄影時才加 `--record`。 |
+| `--record-segment-seconds` | 錄影每幾秒切一個新檔；可降低單檔過大或中斷時的損失。 |
+| `--show-detection-result` / `--no-show-detection-result` | Detect 完成後是否自動開另一個 OpenCV 視窗顯示最新辨識結果；預設開啟。 |
+| `--result-window-name` | Detect 結果視窗名稱；預設是 `UAV localization result`。 |
+| `--localize-device` | 傳給 YOLO 的推論裝置；Apple Silicon 用 `mps`，NVIDIA GPU 用 `cuda:0`，CPU 用 `cpu`。 |
+| `--localize-model` | 傳給 `localize_vehicles.py` 的 YOLO 權重檔。 |
+| `--localize-vehicle-classes` | YOLO 保留的類別；比賽目標車目前建議先用 `car`。 |
+| `--localize-imgsz` | YOLO 輸入尺寸；越大越容易抓小車，但速度較慢、較吃記憶體。 |
+| `--localize-tile-upscales` | tile 放大倍率；`1,2` 會同時跑原倍率與 2 倍放大，提高小車召回率但較慢。 |
+| `--localize-yolo-batch-size` | 每次送進 YOLO 的 tile 數；GPU 記憶體夠可調大，爆記憶體時調小。 |
+| `--localize-conf` | YOLO confidence 門檻；低一點比較不漏小車，再交給 target verifier 過濾。 |
+| `--target-verifier` | Detect 時啟用白車 + 紅/粉紅標記過濾，只留下疑似目標車。 |
+| `--target-verifier-min-score` | 紅/粉紅標記的綜合分數門檻；越高越嚴格。 |
+| `--target-verifier-min-white-ratio` | 車框內白色比例門檻；越高越要求白車，可降低非白車誤判。 |
+| `--target-verifier-min-red-pixels` | 車框內紅/粉紅 marker 最少像素數；越高越抗雜訊，但遠距離小 marker 可能被濾掉。 |
+
+正式接比賽來源時，如果來源是 repo 內的 `stream.sdp`，用：
+
+```bash
+conda run -n uav_contest_env python scripts/opencv_test.py \
+  --source stream.sdp \
+  --backend ffmpeg \
+  --window-width 1600 \
+  --window-height 900 \
+  --output-root stream_outputs/contest_stream_test \
+  --frame-interval 2 \
+  --record \
+  --record-segment-seconds 120 \
+  --show-detection-result \
+  --localize-device mps \
+  --localize-model yolo26x.pt \
+  --localize-vehicle-classes car \
+  --localize-imgsz 1280 \
+  --localize-tile-upscales 1,2 \
+  --localize-yolo-batch-size 4 \
+  --localize-conf 0.12 \
+  --target-verifier \
+  --target-verifier-min-score 0.18 \
+  --target-verifier-min-white-ratio 0.15 \
+  --target-verifier-min-red-pixels 35
+```
+
+如果是 webcam，來源可改成 `--source 0 --backend default`。如果是 RTSP/UDP/HTTP URL，直接把 URL 放在 `--source`，通常保留 `--backend ffmpeg`。
+
+離線大量回歸測試仍可走抽 frame + batch。這不等於比賽即時流程，但適合看很多 frame 的 summary：
+
+```bash
+conda run -n uav_contest_env python scripts/extract_frames.py \
+  --input-dir augmented_test_data/videos \
+  --output-dir augmented_test_data/video03_target_frames \
+  --interval 1 \
+  --prefix video03_target \
+  --overwrite
+
+conda run -n uav_contest_env python scripts/run_augmented_localization_batch.py \
+  --input-dir augmented_test_data/video03_target_frames \
+  --output-root augmented_test_data/video03_target_localization_outputs \
+  --detector yolo \
+  --yolo-model yolo26x.pt \
+  --device mps \
+  --vehicle-classes car \
+  --yolo-batch-size 4 \
+  --imgsz 1280 \
+  --tile-upscales 1,2 \
+  --target-verifier \
+  --target-verifier-min-score 0.18 \
+  --target-verifier-min-white-ratio 0.15 \
+  --target-verifier-min-red-pixels 35 \
+  --orientations all \
+  --match-workers 4 \
+  --feature-max-dim 1200 \
+  --overwrite
+```
+
+## 拖曳 Frame GUI 單張辨識
+
+如果要挑單張 frame 快速測辨識，可以用 `scripts/localize_frame_gui.py`。GUI 會讓你把圖片拖進視窗，或按 `Open Frame` 選圖；按 `Run Detect` 後會執行 `scripts/localize_vehicles.py`，完成後直接在 GUI 顯示 `03_process_overview.jpg`。
+
+拖曳功能需要 `tkinterdnd2`。已在 `requirements.txt` 中列出；如果目前環境還沒安裝，先跑：
+
+```bash
+conda run -n uav_contest_env python -m pip install -r requirements.txt
+```
+
+用目前推薦 CUDA 參數開 GUI：
+
+```bash
+conda run -n uav_contest_env python scripts/localize_frame_gui.py \
+  --output-root frame_gui_outputs \
+  --window-width 1600 \
+  --window-height 950 \
+  --detector yolo \
+  --localize-device cuda:0 \
+  --localize-model yolo26x.pt \
+  --localize-vehicle-classes car \
+  --localize-imgsz 1600 \
+  --localize-tile-upscales 1,4 \
+  --localize-yolo-batch-size 16 \
+  --localize-conf 0.25 \
+  --orientations all \
+  --match-workers 4 \
+  --feature-max-dim 1200 \
+  --target-verifier \
+  --target-verifier-min-score 0.18 \
+  --target-verifier-min-white-ratio 0.15 \
+  --target-verifier-min-red-pixels 35
+```
+
+也可以啟動時直接載入一張圖：
+
+```bash
+conda run -n uav_contest_env python scripts/localize_frame_gui.py \
+  --frame path/to/frame.jpg \
+  --localize-device cuda:0 \
+  --localize-imgsz 1600 \
+  --localize-tile-upscales 1,4 \
+  --localize-yolo-batch-size 16 \
+  --localize-conf 0.25 \
+  --target-verifier
+```
+
+GUI 會把每次結果寫到 `--output-root/<frame_stem>_<timestamp>/`，包含 `01_frame_vehicle_detections.jpg`、`02_map_vehicle_coordinates.jpg`、`03_process_overview.jpg`、`vehicle_localization.json`、`vehicle_localization.csv` 和 `run.stdout.log` / `run.stderr.log`。
 
 ## 將抽出的影像拼接成大圖
 
