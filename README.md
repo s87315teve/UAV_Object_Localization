@@ -832,6 +832,8 @@ conda run -n uav_contest_env python scripts/localize_vehicles.py \
 
 注意：`frame_000051.jpg` 這類全圖對衛星圖做特徵匹配時容易被重複農田紋理誤導，因此 script 預設用 template matching，並會在 JSON 的 `warnings` 記錄低信心匹配。正式比賽版本應加入無人機 GPS/IMU 或穩定固定地物 ROI 來縮小搜尋範圍。地圖匹配預設會測試 `0/90/180/270` 度旋轉，並在車輛中心點轉地圖座標時套用對應旋轉矩陣。為了避免重複田地紋理造成弱假匹配，預設只有旋轉方向分數比原方向高出 `--orientation-switch-margin 0.08` 以上才會切換；如果確定影像方向固定，可加 `--orientations none` 只測原始方向以加速。
 
+如果車輛中心點投影後超出目前 georeferenced map 範圍，程式會改用最靠近的地圖邊界點產生 GPS/TWD97，確保輸出仍有數值。JSON 會標記 `map_pixel_clamped: true`、保留 `original_map_pixel`，並在 `warnings` 寫出使用邊界點的原因。
+
 加上 `--show` 時，程式會在輸出檔案後開啟 `03_process_overview.jpg` 的 OpenCV 視窗。這張 overview 會用較高解析度重新排版左右圖和座標表；下方會列出每台車的 image center、WGS84 與 TWD97 座標，按 `q` 或 `Esc` 關閉。
 
 目前初賽目標 verifier 的策略是「先找車，再在車框內確認白車與紅色/粉紅色圖案」；白色叉叉形狀只作為輔助視覺線索，不作為硬性門檻。

@@ -1232,6 +1232,9 @@ def build_report(
         )
     if target_verifier_summary.get("enabled") and target_verifier_summary.get("kept_count") == 0:
         warnings.append("Target verifier rejected all vehicle candidates; using map-match center fallback.")
+    for item in localized_items:
+        if item.get("localization_warning"):
+            warnings.append(f"{item['vehicle_id']}: {item['localization_warning']}")
 
     report = {
         "frame": str(frame_path),
@@ -1295,13 +1298,7 @@ def localize_detections(
             item["target_verification"] = detection.target_verification
         try:
             map_x, map_y = map_query_point(match_result, (center_x, center_y), query_roi)
-            if not georef.contains_pixel(map_x, map_y):
-                raise ValueError(f"mapped point ({map_x:.2f}, {map_y:.2f}) outside reference map")
-            latitude, longitude = georef.pixel_to_gps(map_x, map_y)
-            twd97_x, twd97_y = wgs84_to_twd97(latitude, longitude)
-            item["map_pixel"] = {"x": round(map_x, 3), "y": round(map_y, 3)}
-            item["gps"] = {"latitude": round(latitude, 8), "longitude": round(longitude, 8)}
-            item["twd97"] = {"x": round(twd97_x, 3), "y": round(twd97_y, 3)}
+            apply_map_coordinates(item, map_x, map_y, georef, "mapped point")
         except Exception as exc:
             item["map_pixel"] = None
             item["gps"] = None
@@ -1329,19 +1326,32 @@ def fallback_map_center_item(
         "fallback_reason": "no_verified_vehicle_detections",
     }
     try:
-        if not georef.contains_pixel(center_x, center_y):
-            raise ValueError(f"map center ({center_x:.2f}, {center_y:.2f}) outside reference map")
-        latitude, longitude = georef.pixel_to_gps(center_x, center_y)
-        twd97_x, twd97_y = wgs84_to_twd97(latitude, longitude)
-        item["map_pixel"] = {"x": round(float(center_x), 3), "y": round(float(center_y), 3)}
-        item["gps"] = {"latitude": round(latitude, 8), "longitude": round(longitude, 8)}
-        item["twd97"] = {"x": round(twd97_x, 3), "y": round(twd97_y, 3)}
+        apply_map_coordinates(item, float(center_x), float(center_y), georef, "map center")
     except Exception as exc:
         item["map_pixel"] = None
         item["gps"] = None
         item["twd97"] = None
         item["localization_error"] = str(exc)
     return item
+
+
+def apply_map_coordinates(item: dict[str, Any], map_x: float, map_y: float, georef: Any, label: str) -> None:
+    clamped_x = clamp(float(map_x), 0.0, float(georef.width))
+    clamped_y = clamp(float(map_y), 0.0, float(georef.height))
+    was_clamped = not math.isclose(clamped_x, map_x, abs_tol=1e-6) or not math.isclose(clamped_y, map_y, abs_tol=1e-6)
+
+    latitude, longitude = georef.pixel_to_gps(clamped_x, clamped_y)
+    twd97_x, twd97_y = wgs84_to_twd97(latitude, longitude)
+    item["map_pixel"] = {"x": round(clamped_x, 3), "y": round(clamped_y, 3)}
+    item["gps"] = {"latitude": round(latitude, 8), "longitude": round(longitude, 8)}
+    item["twd97"] = {"x": round(twd97_x, 3), "y": round(twd97_y, 3)}
+    if was_clamped:
+        item["map_pixel_clamped"] = True
+        item["original_map_pixel"] = {"x": round(float(map_x), 3), "y": round(float(map_y), 3)}
+        item["localization_warning"] = (
+            f"{label} ({map_x:.2f}, {map_y:.2f}) outside reference map; "
+            f"using nearest boundary point ({clamped_x:.2f}, {clamped_y:.2f})"
+        )
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
