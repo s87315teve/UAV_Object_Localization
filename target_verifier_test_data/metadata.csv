@@ -1,0 +1,13 @@
+filename,label,source_type,source_path,timestamp_seconds,ordinary_count,target_count,confuser_count,augmentations,seed
+target_case_000001.jpg,labels/target_case_000001.json,background_image,test_image/frame_000051.jpg,,2,1,2,brightness=1.138|contrast=0.787|color=1.150|blur=0.65|noise_sigma=6.22|jpeg_quality=59,20260705
+target_case_000002.jpg,labels/target_case_000002.json,background_image,test_image/frame_000161.jpg,,2,1,2,brightness=1.090|contrast=1.162|color=1.137|noise_sigma=5.00|jpeg_quality=80,20260705
+target_case_000003.jpg,labels/target_case_000003.json,background_image,stream_outputs/marker_review/video01_003s.jpg,,2,1,2,brightness=1.166|contrast=1.072|color=1.122|jpeg_quality=86,20260705
+target_case_000004.jpg,labels/target_case_000004.json,raw_video_frame,raw_videos/video03.MP4,10.757,2,1,2,brightness=1.042|contrast=0.962|color=1.097|blur=0.94|noise_sigma=4.71|jpeg_quality=87,20260705
+target_case_000005.jpg,labels/target_case_000005.json,raw_video_frame,raw_videos/video02.MP4,53.941,2,1,2,brightness=0.959|contrast=0.964|color=1.117|blur=0.44|noise_sigma=4.28|jpeg_quality=60,20260705
+target_case_000006.jpg,labels/target_case_000006.json,raw_video_frame,raw_videos/video02.MP4,24.926,2,1,2,brightness=0.889|contrast=0.996|color=0.790|blur=1.28|noise_sigma=6.43|jpeg_quality=68,20260705
+target_case_000007.jpg,labels/target_case_000007.json,background_image,test_image/frame_000051.jpg,,2,1,2,brightness=1.064|contrast=0.813|color=1.131|blur=0.66|noise_sigma=7.96|jpeg_quality=71,20260705
+target_case_000008.jpg,labels/target_case_000008.json,background_image,test_image/frame_000161.jpg,,2,1,2,brightness=1.037|contrast=1.004|color=1.173|blur=1.24|noise_sigma=4.85|jpeg_quality=76,20260705
+target_case_000009.jpg,labels/target_case_000009.json,background_image,stream_outputs/marker_review/video01_003s.jpg,,2,1,2,brightness=1.082|contrast=1.198|color=0.976|noise_sigma=5.07|jpeg_quality=75,20260705
+target_case_000010.jpg,labels/target_case_000010.json,raw_video_frame,raw_videos/video03.MP4,10.757,2,1,2,brightness=0.877|contrast=1.172|color=0.990|blur=1.17|noise_sigma=6.42|jpeg_quality=74,20260705
+target_case_000011.jpg,labels/target_case_000011.json,raw_video_frame,raw_videos/video02.MP4,53.941,2,1,2,brightness=0.858|contrast=0.836|color=1.000|blur=0.62|jpeg_quality=86,20260705
+target_case_000012.jpg,labels/target_case_000012.json,raw_video_frame,raw_videos/video02.MP4,24.926,2,1,2,brightness=0.928|contrast=0.984|color=1.159|blur=1.17|noise_sigma=7.06|jpeg_quality=75,20260705

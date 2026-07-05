@@ -1,7 +1,7 @@
 {
   "frame": "test_image/frame_000161.jpg",
   "map_image": "georeferenced_maps/localize_ready_selected_roi/uav_selected_roi_basemap_compressed.jpg",
-  "detector": "yolo",
+  "detector": "auto",
   "yolo_model": "yolo26l.pt",
   "detections_count": 1,
   "map_match": {
@@ -94,6 +94,15 @@
     "process_overview": "vehicle_localization_outputs/frame_000161/03_process_overview.jpg",
     "json": "vehicle_localization_outputs/frame_000161/vehicle_localization.json",
     "csv": "vehicle_localization_outputs/frame_000161/vehicle_localization.csv"
+  },
+  "timings_seconds": {
+    "load_inputs": 0.1386,
+    "detect_vehicles": 8.9135,
+    "match_map": 2.2885,
+    "project_coordinates": 0.0017,
+    "render_visualizations": 0.2726,
+    "write_outputs": 0.1174,
+    "total": 11.7452
   },
   "warnings": [
     "Best rotated orientation score did not exceed identity by 0.080; kept identity to avoid a weak texture false match."

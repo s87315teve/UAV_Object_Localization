@@ -7,6 +7,7 @@ import argparse
 import json
 import math
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -193,6 +194,15 @@ def parse_args() -> argparse.Namespace:
     match_parser.add_argument("--min-matches", type=int, default=20)
     match_parser.add_argument("--min-inliers", type=int, default=10)
     match_parser.add_argument(
+        "--match-workers",
+        type=int,
+        default=1,
+        help=(
+            "Parallel workers for independent orientation candidates. "
+            "Use 1 to keep sequential behavior. Default: 1"
+        ),
+    )
+    match_parser.add_argument(
         "--min-template-score",
         type=float,
         default=0.65,
@@ -319,7 +329,10 @@ def ensure_map_size(image: np.ndarray, georef: GeoReference) -> None:
 
 def write_image(path: Path, image: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not cv2.imwrite(str(path), image):
+    params: list[int] = []
+    if path.suffix.lower() in {".jpg", ".jpeg"}:
+        params = [cv2.IMWRITE_JPEG_QUALITY, 95]
+    if not cv2.imwrite(str(path), image, params):
         raise RuntimeError(f"Failed to write image: {path}")
 
 
@@ -578,8 +591,9 @@ def find_best_match(
     warnings = []
     scored_results = []
     failures = []
+    match_workers = max(1, int(getattr(args, "match_workers", 1)))
 
-    for orientation in candidates:
+    def evaluate_orientation(orientation: str) -> tuple[dict[str, object] | None, list[str], str | None]:
         oriented_query = apply_orientation(query_image, orientation)
         try:
             match_result, candidate_warnings = match_single_orientation(
@@ -588,8 +602,7 @@ def find_best_match(
                 args,
             )
         except RuntimeError as exc:
-            failures.append(f"{orientation}: {exc}")
-            continue
+            return None, [], f"{orientation}: {exc}"
 
         match_result["orientation"] = orientation
         match_result["orientation_matrix"] = orientation_matrix(
@@ -598,8 +611,22 @@ def find_best_match(
             query_image.shape[0],
         )
         match_result["oriented_query_image"] = oriented_query
-        scored_results.append(match_result)
-        warnings.extend(f"{orientation}: {warning}" for warning in candidate_warnings)
+        orientation_warnings = [f"{orientation}: {warning}" for warning in candidate_warnings]
+        return match_result, orientation_warnings, None
+
+    if match_workers > 1 and len(candidates) > 1:
+        with ThreadPoolExecutor(max_workers=min(match_workers, len(candidates))) as executor:
+            orientation_results = list(executor.map(evaluate_orientation, candidates))
+    else:
+        orientation_results = [evaluate_orientation(orientation) for orientation in candidates]
+
+    for match_result, candidate_warnings, failure in orientation_results:
+        if failure is not None:
+            failures.append(failure)
+            continue
+        if match_result is not None:
+            scored_results.append(match_result)
+            warnings.extend(candidate_warnings)
 
     if not scored_results:
         joined_failures = "; ".join(failures)

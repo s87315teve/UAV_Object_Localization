@@ -1,5 +1,11 @@
 # 修改紀錄
 
+## 2026-07-05
+
+- 分支：`main`
+- 變更摘要：新增 video03 低畫質 target 測試影片產生器與測試資料，將每個輸出 frame 貼上真實白車 crop 並加紅底白 X；補充 target verifier、資料增強、批次 localization、即時串流測試工具與相關文件；未納入大型 localization 輸出結果資料夾。
+- 影響範圍：`.gitignore`、`scripts/generate_video03_target_test_video.py`、`augmented_test_data/`、`docs/video03_target_test_video.md`、`scripts/generate_augmented_test_data.py`、`scripts/generate_target_verifier_test_data.py`、`scripts/run_augmented_localization_batch.py`、`scripts/localize_vehicles.py`、`scripts/georeference_map.py`、`scripts/opencv_test.py`、`target_verifier_test_data/`、`stream.sdp`、`run_localize_cuda.sh`、`run_localize_mps.sh`、`README.md`、`requirements.txt`、`MODIFICATION_LOG.md`
+
 ## 2026-07-03
 
 - 分支：`main`

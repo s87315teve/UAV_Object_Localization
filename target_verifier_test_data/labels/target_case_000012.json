@@ -1,0 +1,91 @@
+{
+  "filename": "target_case_000012.jpg",
+  "source_type": "raw_video_frame",
+  "source_path": "raw_videos/video02.MP4",
+  "timestamp_seconds": 24.92570931997334,
+  "augmentations": [
+    "brightness=0.928",
+    "contrast=0.984",
+    "color=1.159",
+    "blur=1.17",
+    "noise_sigma=7.06",
+    "jpeg_quality=75"
+  ],
+  "objects": [
+    {
+      "role": "confuser",
+      "bbox_xyxy": [
+        842,
+        467,
+        975,
+        636
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_002.jpg",
+      "style": "red_vehicle_no_x",
+      "marker_style": "none;scale=1.075;angle=196.85"
+    },
+    {
+      "role": "ordinary",
+      "bbox_xyxy": [
+        723,
+        1756,
+        900,
+        1949
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_003.jpg",
+      "style": "ordinary_any_color",
+      "marker_style": "none;scale=1.092;angle=315.92"
+    },
+    {
+      "role": "ordinary",
+      "bbox_xyxy": [
+        688,
+        702,
+        859,
+        883
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_003.jpg",
+      "style": "ordinary_any_color",
+      "marker_style": "none;scale=1.120;angle=341.73"
+    },
+    {
+      "role": "target",
+      "bbox_xyxy": [
+        487,
+        1468,
+        685,
+        1598
+      ],
+      "marker_bbox_xyxy": [
+        494,
+        1484,
+        671,
+        1570
+      ],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_001.jpg",
+      "style": "real_white_vehicle_crop_with_marker",
+      "marker_style": "target_x;red_background=(180, 24, 42);fat_white_x=(245, 245, 235);side=28;thickness=8;scale=1.016;angle=69.55"
+    },
+    {
+      "role": "confuser",
+      "bbox_xyxy": [
+        762,
+        1062,
+        890,
+        1184
+      ],
+      "marker_bbox_xyxy": [
+        768,
+        1064,
+        849,
+        1146
+      ],
+      "source_crop": "vehicle_localization_outputs/frame_000161/crops/veh_001.jpg",
+      "style": "red_patch_on_white",
+      "marker_style": "red_patch;red_background=(180, 24, 42);fat_white_x=(235, 238, 230);side=19;thickness=2;scale=0.803;angle=32.86"
+    }
+  ]
+}

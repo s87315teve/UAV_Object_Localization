@@ -1,0 +1,90 @@
+{
+  "filename": "target_case_000009.jpg",
+  "source_type": "background_image",
+  "source_path": "stream_outputs/marker_review/video01_003s.jpg",
+  "timestamp_seconds": null,
+  "augmentations": [
+    "brightness=1.082",
+    "contrast=1.198",
+    "color=0.976",
+    "noise_sigma=5.07",
+    "jpeg_quality=75"
+  ],
+  "objects": [
+    {
+      "role": "ordinary",
+      "bbox_xyxy": [
+        2946,
+        506,
+        3102,
+        605
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_001.jpg",
+      "style": "ordinary_any_color",
+      "marker_style": "none;scale=0.835;angle=77.41"
+    },
+    {
+      "role": "confuser",
+      "bbox_xyxy": [
+        2866,
+        387,
+        2966,
+        487
+      ],
+      "marker_bbox_xyxy": [
+        2893,
+        392,
+        2937,
+        469
+      ],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_004.jpg",
+      "style": "red_patch_on_white",
+      "marker_style": "red_patch;red_background=(150, 30, 64);fat_white_x=(235, 238, 230);side=19;thickness=2;scale=1.060;angle=357.54"
+    },
+    {
+      "role": "ordinary",
+      "bbox_xyxy": [
+        2157,
+        303,
+        2263,
+        410
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_004.jpg",
+      "style": "ordinary_any_color",
+      "marker_style": "none;scale=1.009;angle=293.87"
+    },
+    {
+      "role": "target",
+      "bbox_xyxy": [
+        2139,
+        452,
+        2318,
+        651
+      ],
+      "marker_bbox_xyxy": [
+        2140,
+        453,
+        2297,
+        629
+      ],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_002.jpg",
+      "style": "real_white_vehicle_crop_with_marker",
+      "marker_style": "target_x;red_background=(150, 30, 64);fat_white_x=(235, 238, 230);side=25;thickness=9;scale=1.237;angle=333.22"
+    },
+    {
+      "role": "confuser",
+      "bbox_xyxy": [
+        1861,
+        377,
+        2026,
+        536
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000161/crops/veh_001.jpg",
+      "style": "white_no_marker",
+      "marker_style": "none;scale=1.024;angle=131.46"
+    }
+  ]
+}

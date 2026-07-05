@@ -1,0 +1,84 @@
+{
+  "filename": "target_case_000003.jpg",
+  "source_type": "background_image",
+  "source_path": "stream_outputs/marker_review/video01_003s.jpg",
+  "timestamp_seconds": null,
+  "augmentations": [
+    "brightness=1.166",
+    "contrast=1.072",
+    "color=1.122",
+    "jpeg_quality=86"
+  ],
+  "objects": [
+    {
+      "role": "confuser",
+      "bbox_xyxy": [
+        2909,
+        431,
+        2989,
+        556
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000161/crops/veh_001.jpg",
+      "style": "red_vehicle_no_x",
+      "marker_style": "none;scale=0.722;angle=96.45"
+    },
+    {
+      "role": "ordinary",
+      "bbox_xyxy": [
+        1908,
+        363,
+        2050,
+        522
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000161/crops/veh_001.jpg",
+      "style": "ordinary_any_color",
+      "marker_style": "none;scale=0.976;angle=117.79"
+    },
+    {
+      "role": "confuser",
+      "bbox_xyxy": [
+        2047,
+        236,
+        2183,
+        385
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_003.jpg",
+      "style": "red_vehicle_no_x",
+      "marker_style": "none;scale=0.955;angle=290.03"
+    },
+    {
+      "role": "ordinary",
+      "bbox_xyxy": [
+        3021,
+        536,
+        3151,
+        660
+      ],
+      "marker_bbox_xyxy": [],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_004.jpg",
+      "style": "ordinary_any_color",
+      "marker_style": "none;scale=1.126;angle=220.41"
+    },
+    {
+      "role": "target",
+      "bbox_xyxy": [
+        2529,
+        520,
+        2685,
+        639
+      ],
+      "marker_bbox_xyxy": [
+        2530,
+        521,
+        2684,
+        635
+      ],
+      "source_crop": "vehicle_localization_outputs/frame_000051/crops/veh_002.jpg",
+      "style": "real_white_vehicle_crop_with_marker",
+      "marker_style": "target_x;red_background=(180, 24, 42);fat_white_x=(255, 245, 245);side=16;thickness=4;scale=1.012;angle=280.76"
+    }
+  ]
+}

@@ -64,6 +64,17 @@ __pycache__/
 !vehicle_localization_outputs/**
 vehicle_localization_outputs/.DS_Store
 vehicle_localization_outputs/**/.DS_Store
+!augmented_test_data/
+!augmented_test_data/**
+augmented_test_data/.DS_Store
+augmented_test_data/**/.DS_Store
+!target_verifier_test_data/
+!target_verifier_test_data/**
+target_verifier_test_data/.DS_Store
+target_verifier_test_data/**/.DS_Store
+augmented_test_data_localization_outputs/
+augmented_test_data_localization_outputs_yolo26x/
+target_verifier_test_outputs_yolo26x_current/
 !georeferenced_maps/
 georeferenced_maps/selected_roi/
 !georeferenced_maps/localize_ready_selected_roi/

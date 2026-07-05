@@ -8,6 +8,7 @@ import csv
 import json
 import math
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,8 +49,8 @@ except ModuleNotFoundError:
 
 DEFAULT_FRAME = Path("extracted_frames/frame_000051.jpg")
 DEFAULT_OUTPUT_ROOT = Path("vehicle_localization_outputs")
-DEFAULT_YOLO_MODEL = "yolo26l.pt"
-DEFAULT_VEHICLE_CLASSES = "car,bus,truck"
+DEFAULT_YOLO_MODEL = "yolo26x.pt"
+DEFAULT_VEHICLE_CLASSES = "car"
 
 
 @dataclass
@@ -58,6 +59,7 @@ class Detection:
     confidence: float
     class_name: str
     detector: str
+    target_verification: dict[str, Any] | None = None
 
     @property
     def center(self) -> tuple[float, float]:
@@ -105,7 +107,24 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--yolo-model", default=DEFAULT_YOLO_MODEL)
     parser.add_argument("--vehicle-classes", default=DEFAULT_VEHICLE_CLASSES)
-    parser.add_argument("--conf", type=float, default=0.18)
+    parser.add_argument(
+        "--device",
+        default=None,
+        help=(
+            "YOLO inference device passed to Ultralytics, e.g. cpu, mps, cuda, "
+            "cuda:0. Default lets Ultralytics choose."
+        ),
+    )
+    parser.add_argument(
+        "--yolo-batch-size",
+        type=int,
+        default=1,
+        help=(
+            "Number of tile/upscale images to send to each YOLO predict call. "
+            "Use values like 4 or 8 on CUDA/MPS if memory allows. Default: 1"
+        ),
+    )
+    parser.add_argument("--conf", type=float, default=0.12)
     parser.add_argument("--model-iou", type=float, default=0.55)
     parser.add_argument("--nms-iou", type=float, default=0.45)
     parser.add_argument("--imgsz", type=int, default=1280)
@@ -116,10 +135,56 @@ def parse_args() -> argparse.Namespace:
         default="1,2",
         help="Comma-separated tile upscales. Use larger values when cars are tiny.",
     )
-    parser.add_argument("--max-detections", type=int, default=20)
+    parser.add_argument("--max-detections", type=int, default=40)
 
     parser.add_argument("--heuristic-min-area", type=float, default=450.0)
     parser.add_argument("--heuristic-max-area", type=float, default=16000.0)
+    parser.add_argument(
+        "--target-verifier",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Keep only detections that look like a white vehicle with a visible red/pink "
+            "target marker on the vehicle. Default: disabled."
+        ),
+    )
+    parser.add_argument(
+        "--target-verifier-min-score",
+        type=float,
+        default=0.18,
+        help="Minimum marker verification score when --target-verifier is enabled. Default: 0.18",
+    )
+    parser.add_argument(
+        "--target-verifier-context",
+        type=float,
+        default=0.15,
+        help=(
+            "Small extra context around each vehicle box, as a fraction of the larger box side, "
+            "used by the target verifier. Keep this small so off-vehicle red objects are less "
+            "likely to pass. Default: 0.15"
+        ),
+    )
+    parser.add_argument(
+        "--target-verifier-min-white-ratio",
+        type=float,
+        default=0.15,
+        help="Minimum white-pixel ratio inside the original vehicle box. Default: 0.15",
+    )
+    parser.add_argument(
+        "--target-verifier-min-red-pixels",
+        type=int,
+        default=35,
+        help="Minimum red/pink marker pixels required by the target verifier. Default: 35",
+    )
+    parser.add_argument(
+        "--target-verifier-proposals",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "When --target-verifier is enabled, add lightweight white-vehicle candidates "
+            "around visible red/pink markers before filtering. Default: disabled"
+        ),
+    )
 
     parser.add_argument(
         "--map-method",
@@ -159,6 +224,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ratio", type=float, default=0.75)
     parser.add_argument("--min-matches", type=int, default=20)
     parser.add_argument("--min-inliers", type=int, default=10)
+    parser.add_argument(
+        "--match-workers",
+        type=int,
+        default=1,
+        help=(
+            "Parallel workers for independent map-orientation matching. "
+            "Use 1 to keep the original sequential behavior. Default: 1"
+        ),
+    )
 
     parser.add_argument("--save-crops", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
@@ -223,29 +297,26 @@ def detect_with_yolo(
     names = getattr(model, "names", {})
     tiles = generate_tiles(image.shape[1], image.shape[0], args.tile_size, args.tile_overlap)
     detections: list[Detection] = []
+    batch_size = max(1, int(args.yolo_batch_size))
+    batch_inputs: list[np.ndarray] = []
+    batch_meta: list[tuple[int, int, float]] = []
 
-    for tile_x, tile_y, tile_width, tile_height in tiles:
-        tile = image[tile_y : tile_y + tile_height, tile_x : tile_x + tile_width]
-        for upscale in upscales:
-            if math.isclose(upscale, 1.0):
-                model_input = tile
-            else:
-                model_input = cv2.resize(
-                    tile,
-                    (max(1, round(tile_width * upscale)), max(1, round(tile_height * upscale))),
-                    interpolation=cv2.INTER_CUBIC,
-                )
-
-            results = model.predict(
-                source=model_input,
-                imgsz=args.imgsz,
-                conf=args.conf,
-                iou=args.model_iou,
-                verbose=False,
-            )
-            if not results:
-                continue
-            boxes = results[0].boxes
+    def flush_batch() -> None:
+        if not batch_inputs:
+            return
+        predict_kwargs: dict[str, Any] = {
+            "source": batch_inputs if len(batch_inputs) > 1 else batch_inputs[0],
+            "imgsz": args.imgsz,
+            "conf": args.conf,
+            "iou": args.model_iou,
+            "batch": batch_size,
+            "verbose": False,
+        }
+        if args.device:
+            predict_kwargs["device"] = args.device
+        results = model.predict(**predict_kwargs)
+        for result, (tile_x, tile_y, upscale) in zip(results, batch_meta):
+            boxes = result.boxes
             if boxes is None:
                 continue
             xyxy = boxes.xyxy.cpu().numpy()
@@ -269,7 +340,27 @@ def detect_with_yolo(
                         detector=f"yolo:{args.yolo_model}:tile_x{upscale:g}",
                     )
                 )
+        batch_inputs.clear()
+        batch_meta.clear()
 
+    for tile_x, tile_y, tile_width, tile_height in tiles:
+        tile = image[tile_y : tile_y + tile_height, tile_x : tile_x + tile_width]
+        for upscale in upscales:
+            if math.isclose(upscale, 1.0):
+                model_input = tile
+            else:
+                model_input = cv2.resize(
+                    tile,
+                    (max(1, round(tile_width * upscale)), max(1, round(tile_height * upscale))),
+                    interpolation=cv2.INTER_CUBIC,
+                )
+
+            batch_inputs.append(model_input)
+            batch_meta.append((tile_x, tile_y, upscale))
+            if len(batch_inputs) >= batch_size:
+                flush_batch()
+
+    flush_batch()
     return apply_nms(detections, args.nms_iou, args.max_detections)
 
 
@@ -306,6 +397,239 @@ def detect_white_vehicle_candidates(image: np.ndarray, args: argparse.Namespace)
             )
         )
     return apply_nms(detections, args.nms_iou, args.max_detections)
+
+
+def detect_target_marker_vehicle_candidates(image: np.ndarray, args: argparse.Namespace) -> list[Detection]:
+    red_mask = build_red_marker_mask(image)
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    white_mask = cv2.inRange(hsv, (0, 0, 145), (180, 95, 255))
+    white_mask = cv2.morphologyEx(
+        white_mask,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)),
+        iterations=1,
+    )
+    contours, _hierarchy = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    detections: list[Detection] = []
+    image_height, image_width = image.shape[:2]
+    for contour in contours:
+        red_x, red_y, red_width, red_height = cv2.boundingRect(contour)
+        red_pixels = int(cv2.countNonZero(red_mask[red_y : red_y + red_height, red_x : red_x + red_width]))
+        if red_pixels < args.target_verifier_min_red_pixels or red_width < 6 or red_height < 6:
+            continue
+
+        marker_side = max(red_width, red_height)
+        pad = max(24, int(marker_side * 3.0))
+        sx1 = int(clamp(red_x - pad, 0, image_width - 1))
+        sy1 = int(clamp(red_y - pad, 0, image_height - 1))
+        sx2 = int(clamp(red_x + red_width + pad, sx1 + 1, image_width))
+        sy2 = int(clamp(red_y + red_height + pad, sy1 + 1, image_height))
+        search_white = white_mask[sy1:sy2, sx1:sx2]
+        white_contours, _white_hierarchy = cv2.findContours(search_white, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        best_bbox: tuple[int, int, int, int] | None = None
+        best_score = 0.0
+        for white_contour in white_contours:
+            wx, wy, ww, wh = cv2.boundingRect(white_contour)
+            if ww < 10 or wh < 10:
+                continue
+            x1, y1 = sx1 + wx, sy1 + wy
+            x2, y2 = x1 + ww, y1 + wh
+            red_cx = red_x + red_width / 2.0
+            red_cy = red_y + red_height / 2.0
+            expanded = max(5, int(max(ww, wh) * 0.12))
+            if not (x1 - expanded <= red_cx <= x2 + expanded and y1 - expanded <= red_cy <= y2 + expanded):
+                continue
+
+            bbox_area = float(ww * wh)
+            if bbox_area < max(120.0, args.heuristic_min_area * 0.25):
+                continue
+            if bbox_area > max(args.heuristic_max_area * 4.0, 90000.0):
+                continue
+            aspect = ww / float(wh)
+            if not 0.20 <= aspect <= 5.50:
+                continue
+            white_ratio = vehicle_white_ratio(image, (x1, y1, x2, y2))
+            if white_ratio < max(0.25, args.target_verifier_min_white_ratio * 0.60):
+                continue
+
+            red_density = red_pixels / float(max(1, red_width * red_height))
+            score = white_ratio * 0.45 + red_density * 0.35 + min(1.0, red_pixels / 250.0) * 0.20
+            if score > best_score:
+                union_x1 = int(clamp(min(x1, red_x) - expanded, 0, image_width - 1))
+                union_y1 = int(clamp(min(y1, red_y) - expanded, 0, image_height - 1))
+                union_x2 = int(clamp(max(x2, red_x + red_width) + expanded, union_x1 + 1, image_width))
+                union_y2 = int(clamp(max(y2, red_y + red_height) + expanded, union_y1 + 1, image_height))
+                best_bbox = (union_x1, union_y1, union_x2, union_y2)
+                best_score = score
+
+        if best_bbox is None:
+            continue
+        detections.append(
+            Detection(
+                bbox_xyxy=tuple(float(value) for value in best_bbox),
+                confidence=float(min(0.99, 0.35 + best_score * 0.50)),
+                class_name="target_marker_vehicle_candidate",
+                detector="target-verifier-proposal",
+            )
+        )
+
+    return apply_nms(detections, args.nms_iou, args.max_detections)
+
+
+def filter_target_detections(
+    image: np.ndarray,
+    detections: list[Detection],
+    args: argparse.Namespace,
+) -> tuple[list[Detection], dict[str, Any]]:
+    if not args.target_verifier:
+        return detections, {"enabled": False}
+
+    kept: list[Detection] = []
+    rejected: list[dict[str, Any]] = []
+    for index, detection in enumerate(detections, start=1):
+        crop, crop_box = crop_detection_context(image, detection.bbox_xyxy, args.target_verifier_context)
+        verification = verify_red_marker(crop, args.target_verifier_min_red_pixels)
+        white_ratio = vehicle_white_ratio(image, detection.bbox_xyxy)
+        verification.update(
+            {
+                "enabled": True,
+                "threshold": args.target_verifier_min_score,
+                "min_white_ratio": args.target_verifier_min_white_ratio,
+                "min_red_pixels": args.target_verifier_min_red_pixels,
+                "vehicle_white_ratio": white_ratio,
+                "context_bbox_xyxy": [round(float(value), 3) for value in crop_box],
+            }
+        )
+        detection.target_verification = verification
+        is_verified = (
+            verification["score"] >= args.target_verifier_min_score
+            and white_ratio >= args.target_verifier_min_white_ratio
+        )
+        if is_verified:
+            kept.append(detection)
+        else:
+            reason = verification["reason"]
+            if verification["score"] >= args.target_verifier_min_score:
+                reason = "white_vehicle_ratio_below_threshold"
+            rejected.append(
+                {
+                    "candidate": f"veh_{index:03d}",
+                    "class_name": detection.class_name,
+                    "confidence": round(detection.confidence, 4),
+                    "score": verification["score"],
+                    "vehicle_white_ratio": white_ratio,
+                    "reason": reason,
+                }
+            )
+
+    summary = {
+        "enabled": True,
+        "threshold": args.target_verifier_min_score,
+        "min_white_ratio": args.target_verifier_min_white_ratio,
+        "min_red_pixels": args.target_verifier_min_red_pixels,
+        "input_count": len(detections),
+        "kept_count": len(kept),
+        "rejected_count": len(rejected),
+        "rejected": rejected,
+    }
+    return kept, summary
+
+
+def vehicle_white_ratio(
+    image: np.ndarray,
+    bbox_xyxy: tuple[float, float, float, float],
+) -> float:
+    x1, y1, x2, y2 = [int(round(value)) for value in bbox_xyxy]
+    x1 = int(clamp(x1, 0, image.shape[1] - 1))
+    y1 = int(clamp(y1, 0, image.shape[0] - 1))
+    x2 = int(clamp(x2, x1 + 1, image.shape[1]))
+    y2 = int(clamp(y2, y1 + 1, image.shape[0]))
+    crop = image[y1:y2, x1:x2]
+    if crop.size == 0:
+        return 0.0
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    white_mask = cv2.inRange(hsv, (0, 0, 145), (180, 95, 255))
+    return round(float(cv2.countNonZero(white_mask) / max(1, crop.shape[0] * crop.shape[1])), 4)
+
+
+def crop_detection_context(
+    image: np.ndarray,
+    bbox_xyxy: tuple[float, float, float, float],
+    context_fraction: float,
+) -> tuple[np.ndarray, tuple[float, float, float, float]]:
+    x1, y1, x2, y2 = bbox_xyxy
+    width = max(1.0, x2 - x1)
+    height = max(1.0, y2 - y1)
+    pad = max(width, height) * max(0.0, context_fraction)
+    crop_box = (
+        clamp(x1 - pad, 0, image.shape[1] - 1),
+        clamp(y1 - pad, 0, image.shape[0] - 1),
+        clamp(x2 + pad, 0, image.shape[1] - 1),
+        clamp(y2 + pad, 0, image.shape[0] - 1),
+    )
+    cx1, cy1, cx2, cy2 = [int(round(value)) for value in crop_box]
+    return image[cy1 : max(cy1 + 1, cy2), cx1 : max(cx1 + 1, cx2)], crop_box
+
+
+def build_red_marker_mask(image: np.ndarray) -> np.ndarray:
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hue_red_mask = cv2.bitwise_or(
+        cv2.inRange(hsv, (0, 45, 70), (14, 255, 255)),
+        cv2.inRange(hsv, (165, 45, 70), (180, 255, 255)),
+    )
+    blue_channel, green_channel, red_channel = cv2.split(image)
+    pink_mask = (
+        (red_channel.astype(np.int16) > green_channel.astype(np.int16) + 10)
+        & (red_channel.astype(np.int16) > blue_channel.astype(np.int16) + 3)
+        & (red_channel > 125)
+    ).astype(np.uint8) * 255
+    red_mask = cv2.bitwise_or(hue_red_mask, pink_mask)
+    return cv2.morphologyEx(
+        red_mask,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+        iterations=1,
+    )
+
+
+def verify_red_marker(crop: np.ndarray, min_red_pixels: int = 35) -> dict[str, Any]:
+    if crop.size == 0:
+        return {"score": 0.0, "reason": "empty_crop"}
+
+    red_mask = build_red_marker_mask(crop)
+    contours, _hierarchy = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    components: list[dict[str, Any]] = []
+    for contour in contours:
+        x, y, width, height = cv2.boundingRect(contour)
+        red_pixels = int(cv2.countNonZero(red_mask[y : y + height, x : x + width]))
+        if red_pixels < min_red_pixels or width < 6 or height < 6:
+            continue
+        aspect = width / float(height)
+        if not 0.25 <= aspect <= 4.00:
+            continue
+        marker_side = max(width, height)
+        if marker_side > max(180, min(crop.shape[:2]) * 0.90):
+            continue
+
+        red_density = red_pixels / float(max(1, width * height))
+        compactness = min(width, height) / float(marker_side)
+        relative_area = red_pixels / float(max(1, crop.shape[0] * crop.shape[1]))
+        scale_score = min(1.0, relative_area * 80.0)
+        score = min(1.0, red_density * 0.50 + compactness * 0.30 + scale_score * 0.20)
+        components.append(
+            {
+                "score": round(float(score), 4),
+                "red_pixels": red_pixels,
+                "red_density": round(float(red_density), 4),
+                "red_bbox_xyxy": [int(x), int(y), int(x + width), int(y + height)],
+                "reason": "red_marker_candidate",
+            }
+        )
+
+    if not components:
+        return {"score": 0.0, "reason": "no_red_marker_candidate"}
+    return max(components, key=lambda item: item["score"])
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
@@ -357,6 +681,7 @@ def localize_frame_on_map(
         template_scales=args.template_scales,
         orientation_switch_margin=args.orientation_switch_margin,
         feature_max_dim=args.feature_max_dim,
+        match_workers=args.match_workers,
     )
     return find_best_match(map_image, frame, match_args)
 
@@ -674,20 +999,23 @@ def make_process_board(
     localized_detections: list[dict[str, Any]],
     match_result: dict[str, Any],
 ) -> np.ndarray:
-    left = resize_to_fit(frame_overlay, max_width=900, max_height=520)
-    right = resize_to_fit(map_overlay, max_width=900, max_height=520)
+    left = resize_to_fit(frame_overlay, max_width=1400, max_height=820)
+    right = resize_to_fit(map_overlay, max_width=1400, max_height=820)
     image_row_height = max(left.shape[0], right.shape[0])
-    width = left.shape[1] + right.shape[1] + 18
+    gutter = 24
+    title_height = 72
+    width = left.shape[1] + right.shape[1] + gutter
     panel_height = coordinate_panel_height(localized_detections)
-    board = np.full((image_row_height + 46 + panel_height, width, 3), 245, dtype=np.uint8)
-    draw_label(board, "1 UAV frame detections", (12, 28), (0, 0, 0), (255, 255, 255))
-    draw_label(board, "2 projected map coordinates", (left.shape[1] + 30, 28), (0, 0, 0), (255, 255, 255))
-    board[46 : 46 + left.shape[0], 0 : left.shape[1]] = left
-    x_offset = left.shape[1] + 18
-    board[46 : 46 + right.shape[0], x_offset : x_offset + right.shape[1]] = right
+    board = np.full((image_row_height + title_height + panel_height, width, 3), 245, dtype=np.uint8)
+    draw_process_title(board, "1 UAV frame detections", (18, 44))
+    draw_process_title(board, "2 projected map coordinates", (left.shape[1] + gutter + 18, 44))
+    board[title_height : title_height + left.shape[0], 0 : left.shape[1]] = left
+    x_offset = left.shape[1] + gutter
+    board[title_height : title_height + right.shape[0], x_offset : x_offset + right.shape[1]] = right
+    cv2.line(board, (left.shape[1] + gutter // 2, title_height), (left.shape[1] + gutter // 2, title_height + image_row_height), (210, 210, 210), 2)
     draw_coordinate_panel(
         board,
-        top=46 + image_row_height,
+        top=title_height + image_row_height,
         width=width,
         localized_detections=localized_detections,
         match_result=match_result,
@@ -695,10 +1023,23 @@ def make_process_board(
     return board
 
 
+def draw_process_title(board: np.ndarray, text: str, origin: tuple[int, int]) -> None:
+    cv2.putText(
+        board,
+        text,
+        origin,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.95,
+        (0, 0, 0),
+        2,
+        cv2.LINE_AA,
+    )
+
+
 def coordinate_panel_height(localized_detections: list[dict[str, Any]]) -> int:
     visible_rows = max(1, min(len(localized_detections), 6))
-    overflow_note_height = 34 if len(localized_detections) > visible_rows else 0
-    return 76 + visible_rows * 34 + overflow_note_height
+    overflow_note_height = 44 if len(localized_detections) > visible_rows else 0
+    return 96 + visible_rows * 44 + overflow_note_height
 
 
 def draw_coordinate_panel(
@@ -718,10 +1059,10 @@ def draw_coordinate_panel(
     table_right = width - margin
     columns = [
         ("id", table_left),
-        ("class / conf", table_left + 112),
-        ("image center", table_left + 300),
-        ("WGS84 lat, lon", table_left + 500),
-        ("TWD97 x, y", table_left + 850),
+        ("class / conf", table_left + 150),
+        ("image center", table_left + 390),
+        ("WGS84 lat, lon", table_left + 660),
+        ("TWD97 x, y", table_left + 1050),
     ]
 
     cv2.putText(
@@ -729,18 +1070,18 @@ def draw_coordinate_panel(
         f"Vehicle coordinates  |  map match: {match_result['method']} score={float(match_result['score']):.4f}",
         (margin, top + 26),
         font,
-        0.62,
+        0.78,
         (0, 0, 0),
-        1,
+        2,
         cv2.LINE_AA,
     )
-    header_top = top + 42
-    header_bottom = top + 70
+    header_top = top + 50
+    header_bottom = top + 86
     cv2.rectangle(board, (table_left, header_top), (table_right, header_bottom), (238, 242, 246), -1)
     cv2.rectangle(board, (table_left, header_top), (table_right, header_bottom), (190, 190, 190), 1)
 
     for label, x in columns:
-        cv2.putText(board, label, (x, top + 61), font, 0.48, (65, 65, 65), 1, cv2.LINE_AA)
+        cv2.putText(board, label, (x, top + 74), font, 0.62, (65, 65, 65), 2, cv2.LINE_AA)
     for _label, x in columns[1:]:
         cv2.line(board, (x - 12, header_top), (x - 12, board.shape[0] - 12), (220, 220, 220), 1, cv2.LINE_AA)
 
@@ -748,20 +1089,20 @@ def draw_coordinate_panel(
         cv2.putText(
             board,
             "No vehicle detections.",
-            (margin, top + 100),
+            (margin, top + 126),
             font,
-            0.55,
+            0.72,
             (0, 0, 180),
-            1,
+            2,
             cv2.LINE_AA,
         )
         return
 
     visible_items = localized_detections[:6]
     for row_index, item in enumerate(visible_items):
-        row_top = header_bottom + row_index * 34
-        row_bottom = row_top + 34
-        row_y = row_top + 23
+        row_top = header_bottom + row_index * 44
+        row_bottom = row_top + 44
+        row_y = row_top + 30
         bg_color = (255, 255, 255) if row_index % 2 == 0 else (248, 250, 252)
         cv2.rectangle(board, (table_left, row_top), (table_right, row_bottom), bg_color, -1)
         cv2.line(board, (table_left, row_bottom), (table_right, row_bottom), (226, 226, 226), 1, cv2.LINE_AA)
@@ -783,18 +1124,18 @@ def draw_coordinate_panel(
             twd97_text,
         ]
         for (_label, x), value in zip(columns, values):
-            cv2.putText(board, value, (x, row_y), font, 0.52, (0, 0, 0), 1, cv2.LINE_AA)
+            cv2.putText(board, value, (x, row_y), font, 0.66, (0, 0, 0), 2, cv2.LINE_AA)
 
     remaining = len(localized_detections) - len(visible_items)
     if remaining > 0:
         cv2.putText(
             board,
             f"... {remaining} more detections are in vehicle_localization.json / .csv",
-            (margin, header_bottom + len(visible_items) * 34 + 25),
+            (margin, header_bottom + len(visible_items) * 44 + 32),
             font,
-            0.52,
+            0.66,
             (70, 70, 70),
-            1,
+            2,
             cv2.LINE_AA,
         )
 
@@ -878,7 +1219,9 @@ def build_report(
     match_result: dict[str, Any],
     match_warnings: list[str],
     detector_warning: str | None,
+    target_verifier_summary: dict[str, Any],
     outputs: dict[str, str],
+    timings: dict[str, float],
 ) -> dict[str, Any]:
     warnings = list(match_warnings)
     if detector_warning:
@@ -887,6 +1230,8 @@ def build_report(
         warnings.append(
             "Map template score is below threshold; treat map coordinates as rough demo output."
         )
+    if target_verifier_summary.get("enabled") and target_verifier_summary.get("kept_count") == 0:
+        warnings.append("Target verifier rejected all vehicle candidates; using map-match center fallback.")
 
     report = {
         "frame": str(frame_path),
@@ -894,6 +1239,7 @@ def build_report(
         "detector": args.detector,
         "yolo_model": args.yolo_model,
         "detections_count": len(detections),
+        "target_verifier": target_verifier_summary,
         "map_match": {
             "method": match_result["method"],
             "score": match_result["score"],
@@ -910,6 +1256,7 @@ def build_report(
         },
         "vehicles": localized_items,
         "outputs": outputs,
+        "timings_seconds": timings,
         "warnings": warnings,
         "deferred_work": [
             "Train or fine-tune a competition-specific detector for the roof marker X.",
@@ -931,6 +1278,9 @@ def localize_detections(
     items: list[dict[str, Any]] = []
     frame_height, frame_width = frame_shape[:2]
     query_roi = (0, 0, frame_width, frame_height)
+    if not detections:
+        return [fallback_map_center_item(match_result, georef, frame_width, frame_height)]
+
     for index, detection in enumerate(detections, start=1):
         center_x, center_y = detection.center
         item: dict[str, Any] = {
@@ -941,6 +1291,8 @@ def localize_detections(
             "bbox_xyxy": [round(float(value), 3) for value in detection.bbox_xyxy],
             "center_image_pixel": {"x": round(center_x, 3), "y": round(center_y, 3)},
         }
+        if detection.target_verification is not None:
+            item["target_verification"] = detection.target_verification
         try:
             map_x, map_y = map_query_point(match_result, (center_x, center_y), query_roi)
             if not georef.contains_pixel(map_x, map_y):
@@ -957,6 +1309,39 @@ def localize_detections(
             item["localization_error"] = str(exc)
         items.append(item)
     return items
+
+
+def fallback_map_center_item(
+    match_result: dict[str, Any],
+    georef: Any,
+    frame_width: int,
+    frame_height: int,
+) -> dict[str, Any]:
+    center_x, center_y = match_result["center"]
+    item: dict[str, Any] = {
+        "vehicle_id": "fallback_map_center",
+        "class_name": "map_match_center_fallback",
+        "confidence": 0.0,
+        "detector": "fallback:map_match_center",
+        "bbox_xyxy": [],
+        "center_image_pixel": {"x": round(frame_width / 2.0, 3), "y": round(frame_height / 2.0, 3)},
+        "is_fallback": True,
+        "fallback_reason": "no_verified_vehicle_detections",
+    }
+    try:
+        if not georef.contains_pixel(center_x, center_y):
+            raise ValueError(f"map center ({center_x:.2f}, {center_y:.2f}) outside reference map")
+        latitude, longitude = georef.pixel_to_gps(center_x, center_y)
+        twd97_x, twd97_y = wgs84_to_twd97(latitude, longitude)
+        item["map_pixel"] = {"x": round(float(center_x), 3), "y": round(float(center_y), 3)}
+        item["gps"] = {"latitude": round(latitude, 8), "longitude": round(longitude, 8)}
+        item["twd97"] = {"x": round(twd97_x, 3), "y": round(twd97_y, 3)}
+    except Exception as exc:
+        item["map_pixel"] = None
+        item["gps"] = None
+        item["twd97"] = None
+        item["localization_error"] = str(exc)
+    return item
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -1008,19 +1393,34 @@ def write_csv(path: Path, items: list[dict[str, Any]]) -> None:
             )
 
 
+def timing_seconds(start_time: float) -> float:
+    return round(time.perf_counter() - start_time, 4)
+
+
+def print_timing_summary(timings: dict[str, float]) -> None:
+    parts = [f"{name}={seconds:.3f}s" for name, seconds in timings.items()]
+    print("Timing: " + ", ".join(parts), file=sys.stderr)
+
+
 def main() -> int:
+    total_start = time.perf_counter()
+    timings: dict[str, float] = {}
+
     args = parse_args()
     if args.output_dir is None:
         args.output_dir = DEFAULT_OUTPUT_ROOT / args.frame.stem
     upscales = parse_float_list(args.tile_upscales, "--tile-upscales")
     class_filter = parse_class_filter(args.vehicle_classes)
 
+    stage_start = time.perf_counter()
     frame = read_bgr(args.frame)
     args.map_image = resolve_map_image_path(args)
     map_image = read_bgr(args.map_image)
     georef = load_georef(args.georef_json)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    timings["load_inputs"] = timing_seconds(stage_start)
 
+    stage_start = time.perf_counter()
     detector_warning = None
     if args.detector in {"auto", "yolo"}:
         try:
@@ -1032,13 +1432,32 @@ def main() -> int:
             detections = detect_white_vehicle_candidates(frame, args)
     else:
         detections = detect_white_vehicle_candidates(frame, args)
+    if args.target_verifier and args.target_verifier_proposals:
+        target_marker_candidates = detect_target_marker_vehicle_candidates(frame, args)
+        detections = apply_nms(
+            detections + target_marker_candidates,
+            args.nms_iou,
+            args.max_detections,
+        )
+    timings["detect_vehicles"] = timing_seconds(stage_start)
 
+    stage_start = time.perf_counter()
+    detections, target_verifier_summary = filter_target_detections(frame, detections, args)
+    timings["verify_targets"] = timing_seconds(stage_start)
+
+    stage_start = time.perf_counter()
     match_result, match_warnings = localize_frame_on_map(frame, map_image, args)
-    localized_items = localize_detections(detections, match_result, georef, frame.shape)
+    timings["match_map"] = timing_seconds(stage_start)
 
+    stage_start = time.perf_counter()
+    localized_items = localize_detections(detections, match_result, georef, frame.shape)
+    timings["project_coordinates"] = timing_seconds(stage_start)
+
+    stage_start = time.perf_counter()
     frame_overlay = draw_detections_on_frame(frame, detections)
     map_overlay = draw_map_overlay(map_image, match_result, localized_items)
     process_board = make_process_board(frame_overlay, map_overlay, localized_items, match_result)
+    timings["render_visualizations"] = timing_seconds(stage_start)
 
     frame_overlay_path = args.output_dir / "01_frame_vehicle_detections.jpg"
     map_overlay_path = args.output_dir / "02_map_vehicle_coordinates.jpg"
@@ -1046,6 +1465,7 @@ def main() -> int:
     json_path = args.output_dir / "vehicle_localization.json"
     csv_path = args.output_dir / "vehicle_localization.csv"
 
+    stage_start = time.perf_counter()
     write_image(frame_overlay_path, frame_overlay)
     write_image(map_overlay_path, map_overlay)
     write_image(board_path, process_board)
@@ -1053,6 +1473,8 @@ def main() -> int:
     crop_paths = save_detection_crops(frame, detections, args.output_dir) if args.save_crops else []
     for item, crop_path in zip(localized_items, crop_paths):
         item["crop"] = crop_path
+    write_csv(csv_path, localized_items)
+    timings["write_outputs"] = timing_seconds(stage_start)
 
     outputs = {
         "frame_overlay": str(frame_overlay_path),
@@ -1061,6 +1483,7 @@ def main() -> int:
         "json": str(json_path),
         "csv": str(csv_path),
     }
+    timings["total"] = timing_seconds(total_start)
     report = build_report(
         args.frame,
         args,
@@ -1069,11 +1492,13 @@ def main() -> int:
         match_result,
         match_warnings,
         detector_warning,
+        target_verifier_summary,
         outputs,
+        timings,
     )
     write_json(json_path, report)
-    write_csv(csv_path, localized_items)
 
+    print_timing_summary(timings)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if args.show:
         show_image("vehicle localization process overview", process_board)
