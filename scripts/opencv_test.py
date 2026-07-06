@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
+import socket
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "stream_outputs"
 DEFAULT_SOURCE = "stream.sdp"
 LOOPABLE_VIDEO_EXTENSIONS = {".avi", ".m4v", ".mkv", ".mov", ".mp4"}
+TELEMETRY_DISPLAY_INTERVAL_SECONDS = 0.5
 cv2 = None
 
 
@@ -56,6 +60,15 @@ class LocalizationJob:
     process: subprocess.Popen
     frame_path: Path
     output_dir: Path
+
+
+@dataclass
+class TelemetrySnapshot:
+    altitude_m: float | None = None
+    relative_altitude_m: float | None = None
+    battery_voltage_v: float | None = None
+    timestamp: str | None = None
+    sequence: int | None = None
 
 
 class SegmentRecorder:
@@ -244,6 +257,28 @@ def parse_args() -> argparse.Namespace:
         help="OpenCV window name for the latest Detect result.",
     )
     parser.add_argument(
+        "--telemetry",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Listen for UAV telemetry UDP JSON packets and show them below the image. Default: enabled.",
+    )
+    parser.add_argument(
+        "--telemetry-host",
+        default="0.0.0.0",
+        help="Local IP address to bind for telemetry UDP packets. Default: 0.0.0.0",
+    )
+    parser.add_argument(
+        "--telemetry-port",
+        type=int,
+        default=6001,
+        help="Local UDP port for telemetry JSON packets. Default: 6001",
+    )
+    parser.add_argument(
+        "--require-telemetry",
+        action="store_true",
+        help="Exit immediately if telemetry UDP binding fails.",
+    )
+    parser.add_argument(
         "--target-verifier",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -419,12 +454,94 @@ def handle_button_click(x: int, y: int, buttons: list[Button]) -> str | None:
     return None
 
 
-def make_buttons(width: int, detection_running: bool) -> list[Button]:
+class TelemetryUdpReceiver:
+    def __init__(self, host: str, port: int) -> None:
+        self.host = host
+        self.port = port
+        self.snapshot = TelemetrySnapshot()
+        self.sock: socket.socket | None = None
+        self.lock = threading.Lock()
+        self.running = False
+        self.thread: threading.Thread | None = None
+        self.packet_count = 0
+
+    def start(self) -> None:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind((self.host, self.port))
+            sock.settimeout(0.2)
+        except OSError as exc:
+            print(f"Telemetry disabled: cannot bind UDP {self.host}:{self.port}: {exc}")
+            self.close()
+            return
+        self.sock = sock
+        print(f"Listening for telemetry UDP on {self.host}:{self.port}")
+        self.running = True
+        self.thread = threading.Thread(target=self._receive_loop, name="telemetry-udp", daemon=True)
+        self.thread.start()
+
+    def is_active(self) -> bool:
+        return self.sock is not None and self.running
+
+    def receive_latest(self) -> TelemetrySnapshot:
+        with self.lock:
+            return self.snapshot
+
+    def _receive_loop(self) -> None:
+        if self.sock is None:
+            return
+
+        while self.running:
+            try:
+                data, address = self.sock.recvfrom(4096)
+            except socket.timeout:
+                continue
+            except OSError as exc:
+                if self.running:
+                    print(f"Telemetry disabled: UDP receive failed: {exc}")
+                break
+
+            try:
+                packet = json.loads(data.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                print(f"Invalid telemetry packet from {address[0]}:{address[1]}: {exc}")
+                continue
+
+            snapshot = TelemetrySnapshot(
+                altitude_m=packet.get("altitude_m"),
+                relative_altitude_m=packet.get("relative_altitude_m"),
+                battery_voltage_v=packet.get("battery_voltage_v"),
+                timestamp=packet.get("timestamp"),
+                sequence=packet.get("sequence"),
+            )
+            with self.lock:
+                self.snapshot = snapshot
+                self.packet_count += 1
+                packet_count = self.packet_count
+
+            if packet_count <= 3:
+                print(
+                    f"Telemetry received from {address[0]}:{address[1]}: "
+                    f"Altitude={format_telemetry_value(snapshot.altitude_m, 'm')}, "
+                    f"Relative Altitude={format_telemetry_value(snapshot.relative_altitude_m, 'm')}, "
+                    f"Battery Voltage={format_telemetry_value(snapshot.battery_voltage_v, 'V')}"
+                )
+
+    def close(self) -> None:
+        self.running = False
+        if self.sock is not None:
+            self.sock.close()
+            self.sock = None
+        if self.thread is not None and self.thread.is_alive():
+            self.thread.join(timeout=0.5)
+        self.thread = None
+
+
+def make_buttons(width: int, y: int, detection_running: bool) -> list[Button]:
     button_width = max(150, min(220, width // 5))
     button_height = 46
     gap = 12
     x = 16
-    y = 14
     buttons = [
         Button("save", "Save Frame", (x, y, x + button_width, y + button_height)),
         Button(
@@ -469,18 +586,44 @@ def draw_button(output, button: Button) -> None:
     cv2.putText(output, button.label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.66, text, 2, cv2.LINE_AA)
 
 
-def draw_status(frame, source_label: str, detection_running: bool) -> tuple[object, list[Button]]:
-    output = frame.copy()
-    buttons = make_buttons(output.shape[1], detection_running)
-    panel_height = 78
-    cv2.rectangle(output, (0, 0), (output.shape[1], panel_height), (25, 25, 25), -1)
+def format_telemetry_value(value: float | int | None, unit: str) -> str:
+    if isinstance(value, (int, float)):
+        return f"{value:.2f} {unit}"
+    return "None"
+
+
+def draw_status(frame, detection_running: bool, telemetry: TelemetrySnapshot) -> tuple[object, list[Button]]:
+    panel_height = 116
+    output = cv2.copyMakeBorder(
+        frame,
+        0,
+        panel_height,
+        0,
+        0,
+        cv2.BORDER_CONSTANT,
+        value=(25, 25, 25),
+    )
+    frame_height = frame.shape[0]
+    buttons = make_buttons(output.shape[1], frame_height + 14, detection_running)
     for button in buttons:
         draw_button(output, button)
-    status = f"source: {source_label}"
-    if detection_running:
-        status += " | localization running"
-    cv2.putText(output, status, (16, panel_height + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
-    cv2.putText(output, status, (16, panel_height + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+
+    telemetry_text = (
+        f"Telemetry | Altitude: {format_telemetry_value(telemetry.altitude_m, 'm')} | "
+        f"Relative Altitude: {format_telemetry_value(telemetry.relative_altitude_m, 'm')} | "
+        f"Battery Voltage: {format_telemetry_value(telemetry.battery_voltage_v, 'V')}"
+    )
+    text_x = min(output.shape[1] - 16, buttons[-1].rect[2] + 24)
+    text_y = frame_height + 34
+    font_scale = 0.66
+    text_size, _baseline = cv2.getTextSize(telemetry_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 2)
+    if text_x + text_size[0] > output.shape[1] - 16:
+        text_x = 16
+        text_y = frame_height + 100
+        available_width = output.shape[1] - 32
+        if text_size[0] > available_width:
+            font_scale = max(0.45, font_scale * available_width / text_size[0])
+    cv2.putText(output, telemetry_text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 2, cv2.LINE_AA)
     return output, buttons
 
 
@@ -511,6 +654,15 @@ def main() -> int:
     periodic_dir = args.output_root / "frames"
     manual_dir = args.output_root / "manual_frames"
     localization_job: LocalizationJob | None = None
+    telemetry_receiver = TelemetryUdpReceiver(args.telemetry_host, args.telemetry_port) if args.telemetry else None
+    if telemetry_receiver is not None:
+        telemetry_receiver.start()
+        if args.require_telemetry and not telemetry_receiver.is_active():
+            raise RuntimeError(
+                f"Telemetry is required, but UDP {args.telemetry_host}:{args.telemetry_port} is not available."
+            )
+    displayed_telemetry = TelemetrySnapshot()
+    last_telemetry_display_update = 0.0
     running = True
     last_periodic_save = 0.0
     current_buttons: list[Button] = []
@@ -566,7 +718,11 @@ def main() -> int:
 
             localization_job = reap_finished_job(localization_job, args)
             detection_running = localization_job is not None
-            display_frame, current_buttons = draw_status(frame, source.label, detection_running)
+            latest_telemetry = telemetry_receiver.receive_latest() if telemetry_receiver is not None else TelemetrySnapshot()
+            if now - last_telemetry_display_update >= TELEMETRY_DISPLAY_INTERVAL_SECONDS:
+                displayed_telemetry = latest_telemetry
+                last_telemetry_display_update = now
+            display_frame, current_buttons = draw_status(frame, detection_running, displayed_telemetry)
             cv2.imshow(args.window_name, display_frame)
             key = cv2.waitKey(1) & 0xFF
             if key == 27:
@@ -586,6 +742,8 @@ def main() -> int:
         cap.release()
         if recorder is not None:
             recorder.release()
+        if telemetry_receiver is not None:
+            telemetry_receiver.close()
         cv2.destroyAllWindows()
         if localization_job is not None and localization_job.process.poll() is None:
             print(f"Localization job still running: pid={localization_job.process.pid}")

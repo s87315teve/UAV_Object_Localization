@@ -87,6 +87,42 @@
 - `docs/images/`: workflow 文件使用的流程示意圖。
 - `raw_videos/`: 原始無人機影片資料。
 
+## UAV Telemetry UDP 傳輸
+
+Nano 端可用 `scripts/uav_telemetry_udp_sender.py` 從 Pixhawk 讀取高度與電池電壓，打包成 JSON 後透過 UDP 傳到其他電腦。預設目標是 `192.168.1.150:6001`，JSON 欄位包含：
+
+```json
+{
+  "timestamp": "2026-07-06T12:00:00.000Z",
+  "sequence": 0,
+  "altitude_m": -1.87,
+  "relative_altitude_m": -3.63,
+  "battery_voltage_v": 23.21
+}
+```
+
+接收端電腦先執行：
+
+```bash
+python3 scripts/uav_telemetry_udp_receiver.py --host 0.0.0.0 --port 6001
+```
+
+Jetson Nano 端再執行：
+
+```bash
+python3 scripts/uav_telemetry_udp_sender.py \
+  --serial /dev/ttyACM0 \
+  --baud 115200 \
+  --host 192.168.1.150 \
+  --port 6001
+```
+
+如果接收端防火牆有開啟，需允許 UDP `6001`。若要調整傳送頻率，可加上 `--rate-hz 10`；設成 `--rate-hz 0` 則會在相關 MAVLink 訊息更新時盡量送出。
+
+`scripts/opencv_test.py` 也會預設監聽 UDP `6001`，並在影像下方顯示高度、相對高度與電池電壓。沒有收到 telemetry 時會顯示 `None`，不會影響影片顯示或辨識流程。若要改 port，可加上 `--telemetry-port 6001`；若要關閉可加上 `--no-telemetry`。
+
+本專案的 `stream.sdp` 影片串流使用 RTP `5000`，FFmpeg/OpenCV 可能同時佔用 RTCP `5001`，因此 telemetry 使用 `6001` 避免和影片串流衝突。
+
 ## 從原始影片抽取影像
 
 `scripts/extract_frames.py` 會依照 `raw_videos/` 裡的影片檔名排序處理影片，預設每 3 秒擷取一張影像，並把三支影片的截圖依任務順序連續存到同一個資料夾。
