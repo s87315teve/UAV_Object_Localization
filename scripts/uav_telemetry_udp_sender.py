@@ -60,6 +60,18 @@ def parse_args() -> argparse.Namespace:
         default=5.0,
         help="Seconds to wait before retrying after a connection/read failure. Default: 5",
     )
+    parser.add_argument(
+        "--request-rate-hz",
+        type=float,
+        default=5.0,
+        help="MAVLink message rate to request from Pixhawk for required telemetry. Default: 5",
+    )
+    parser.add_argument(
+        "--telemetry-timeout",
+        type=float,
+        default=15.0,
+        help="Seconds without a complete UDP telemetry packet before reconnecting. Default: 15",
+    )
     return parser.parse_args()
 
 
@@ -76,6 +88,68 @@ def close_mavlink(master) -> None:
         print(f"Warning: failed to close MAVLink connection cleanly: {exc}")
 
 
+def missing_fields(altitude, relative_altitude, battery_voltage) -> str:
+    missing = []
+    if altitude is None:
+        missing.append("altitude_m")
+    if relative_altitude is None:
+        missing.append("relative_altitude_m")
+    if battery_voltage is None:
+        missing.append("battery_voltage_v")
+    return ", ".join(missing) if missing else "none"
+
+
+def request_message_interval(master, message_id: int, rate_hz: float) -> None:
+    if rate_hz <= 0:
+        return
+    interval_us = int(1_000_000 / rate_hz)
+    master.mav.command_long_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL,
+        0,
+        message_id,
+        interval_us,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+
+
+def request_telemetry_streams(master, rate_hz: float) -> None:
+    if rate_hz <= 0:
+        return
+
+    try:
+        request_message_interval(master, mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, rate_hz)
+        request_message_interval(master, mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS, rate_hz)
+    except Exception as exc:
+        print(f"Warning: MAV_CMD_SET_MESSAGE_INTERVAL request failed: {exc}")
+
+    try:
+        request_rate = max(1, int(rate_hz))
+        master.mav.request_data_stream_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_DATA_STREAM_POSITION,
+            request_rate,
+            1,
+        )
+        master.mav.request_data_stream_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS,
+            request_rate,
+            1,
+        )
+    except Exception as exc:
+        print(f"Warning: legacy MAVLink stream request failed: {exc}")
+
+    print(f"Requested Pixhawk telemetry messages at {rate_hz:.1f} Hz")
+
+
 def run_telemetry_loop(args: argparse.Namespace, sock: socket.socket, state: dict) -> None:
     min_interval = 0.0 if args.rate_hz <= 0 else 1.0 / args.rate_hz
     altitude = None
@@ -83,6 +157,7 @@ def run_telemetry_loop(args: argparse.Namespace, sock: socket.socket, state: dic
     battery_voltage = None
     last_sent = 0.0
     last_message = time.monotonic()
+    last_packet_sent = time.monotonic()
     master = None
 
     try:
@@ -94,6 +169,9 @@ def run_telemetry_loop(args: argparse.Namespace, sock: socket.socket, state: dic
         if heartbeat is None:
             raise TimeoutError(f"No heartbeat for {args.heartbeat_timeout:.1f} seconds")
         print(f"Connected! Sending telemetry to {args.host}:{args.port}")
+        request_telemetry_streams(master, args.request_rate_hz)
+        last_message = time.monotonic()
+        last_packet_sent = last_message
 
         while True:
             msg = master.recv_match(blocking=True, timeout=1.0)
@@ -102,6 +180,11 @@ def run_telemetry_loop(args: argparse.Namespace, sock: socket.socket, state: dic
             if msg is None:
                 if now - last_message >= args.message_timeout:
                     raise TimeoutError(f"No MAVLink messages for {args.message_timeout:.1f} seconds")
+                if now - last_packet_sent >= args.telemetry_timeout:
+                    raise TimeoutError(
+                        f"No complete telemetry packet for {args.telemetry_timeout:.1f} seconds; "
+                        f"missing: {missing_fields(altitude, relative_altitude, battery_voltage)}"
+                    )
                 continue
             last_message = now
 
@@ -117,9 +200,19 @@ def run_telemetry_loop(args: argparse.Namespace, sock: socket.socket, state: dic
                 updated = True
 
             if not updated:
+                if now - last_packet_sent >= args.telemetry_timeout:
+                    raise TimeoutError(
+                        f"No complete telemetry packet for {args.telemetry_timeout:.1f} seconds; "
+                        f"missing: {missing_fields(altitude, relative_altitude, battery_voltage)}"
+                    )
                 continue
 
             if altitude is None or relative_altitude is None or battery_voltage is None:
+                if now - last_packet_sent >= args.telemetry_timeout:
+                    raise TimeoutError(
+                        f"No complete telemetry packet for {args.telemetry_timeout:.1f} seconds; "
+                        f"missing: {missing_fields(altitude, relative_altitude, battery_voltage)}"
+                    )
                 continue
 
             if min_interval > 0 and now - last_sent < min_interval:
@@ -144,6 +237,7 @@ def run_telemetry_loop(args: argparse.Namespace, sock: socket.socket, state: dic
 
             state["sequence"] += 1
             last_sent = now
+            last_packet_sent = now
     finally:
         close_mavlink(master)
 

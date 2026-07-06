@@ -128,6 +128,8 @@ python3 -u scripts/uav_telemetry_udp_sender.py \
   --port 6001 \
   --heartbeat-timeout 10 \
   --message-timeout 5 \
+  --telemetry-timeout 15 \
+  --request-rate-hz 5 \
   --reconnect-delay 5
 ```
 
