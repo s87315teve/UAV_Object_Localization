@@ -118,6 +118,18 @@ python3 scripts/uav_telemetry_udp_sender.py \
 ```
 
 如果接收端防火牆有開啟，需允許 UDP `6001`。若要調整傳送頻率，可加上 `--rate-hz 10`；設成 `--rate-hz 0` 則會在相關 MAVLink 訊息更新時盡量送出。
+sender 會在 Pixhawk busy、heartbeat timeout、USB 中途斷線或一段時間沒有 MAVLink 訊息時自動關閉 serial 並重連。常用穩定性參數：
+
+```bash
+python3 -u scripts/uav_telemetry_udp_sender.py \
+  --serial /dev/ttyACM0 \
+  --baud 115200 \
+  --host 192.168.1.150 \
+  --port 6001 \
+  --heartbeat-timeout 10 \
+  --message-timeout 5 \
+  --reconnect-delay 5
+```
 
 `scripts/opencv_test.py` 也會預設監聽 UDP `6001`，並在影像下方顯示高度、相對高度與電池電壓。沒有收到 telemetry 時會顯示 `None`，不會影響影片顯示或辨識流程。若要改 port，可加上 `--telemetry-port 6001`；若要關閉可加上 `--no-telemetry`。
 
