@@ -130,6 +130,7 @@ python3 -u scripts/uav_telemetry_udp_sender.py \
   --message-timeout 5 \
   --telemetry-timeout 15 \
   --request-rate-hz 5 \
+  --sys-status-rate-hz 2 \
   --reconnect-delay 5
 ```
 

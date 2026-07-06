@@ -64,7 +64,13 @@ def parse_args() -> argparse.Namespace:
         "--request-rate-hz",
         type=float,
         default=5.0,
-        help="MAVLink message rate to request from Pixhawk for required telemetry. Default: 5",
+        help="GLOBAL_POSITION_INT request rate from Pixhawk. Default: 5",
+    )
+    parser.add_argument(
+        "--sys-status-rate-hz",
+        type=float,
+        default=2.0,
+        help="SYS_STATUS request rate from Pixhawk. Default: 2",
     )
     parser.add_argument(
         "--telemetry-timeout",
@@ -118,36 +124,41 @@ def request_message_interval(master, message_id: int, rate_hz: float) -> None:
     )
 
 
-def request_telemetry_streams(master, rate_hz: float) -> None:
-    if rate_hz <= 0:
+def request_telemetry_streams(master, position_rate_hz: float, sys_status_rate_hz: float) -> None:
+    if position_rate_hz <= 0 and sys_status_rate_hz <= 0:
         return
 
     try:
-        request_message_interval(master, mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, rate_hz)
-        request_message_interval(master, mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS, rate_hz)
+        request_message_interval(master, mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT, position_rate_hz)
+        request_message_interval(master, mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS, sys_status_rate_hz)
     except Exception as exc:
         print(f"Warning: MAV_CMD_SET_MESSAGE_INTERVAL request failed: {exc}")
 
     try:
-        request_rate = max(1, int(rate_hz))
-        master.mav.request_data_stream_send(
-            master.target_system,
-            master.target_component,
-            mavutil.mavlink.MAV_DATA_STREAM_POSITION,
-            request_rate,
-            1,
-        )
-        master.mav.request_data_stream_send(
-            master.target_system,
-            master.target_component,
-            mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS,
-            request_rate,
-            1,
-        )
+        if position_rate_hz > 0:
+            master.mav.request_data_stream_send(
+                master.target_system,
+                master.target_component,
+                mavutil.mavlink.MAV_DATA_STREAM_POSITION,
+                max(1, int(position_rate_hz)),
+                1,
+            )
+        if sys_status_rate_hz > 0:
+            master.mav.request_data_stream_send(
+                master.target_system,
+                master.target_component,
+                mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS,
+                max(1, int(sys_status_rate_hz)),
+                1,
+            )
     except Exception as exc:
         print(f"Warning: legacy MAVLink stream request failed: {exc}")
 
-    print(f"Requested Pixhawk telemetry messages at {rate_hz:.1f} Hz")
+    print(
+        "Requested Pixhawk telemetry messages: "
+        f"GLOBAL_POSITION_INT at {position_rate_hz:.1f} Hz, "
+        f"SYS_STATUS at {sys_status_rate_hz:.1f} Hz"
+    )
 
 
 def run_telemetry_loop(args: argparse.Namespace, sock: socket.socket, state: dict) -> None:
@@ -169,12 +180,13 @@ def run_telemetry_loop(args: argparse.Namespace, sock: socket.socket, state: dic
         if heartbeat is None:
             raise TimeoutError(f"No heartbeat for {args.heartbeat_timeout:.1f} seconds")
         print(f"Connected! Sending telemetry to {args.host}:{args.port}")
-        request_telemetry_streams(master, args.request_rate_hz)
+        request_telemetry_streams(master, args.request_rate_hz, args.sys_status_rate_hz)
+        time.sleep(1.0)
         last_message = time.monotonic()
         last_packet_sent = last_message
 
         while True:
-            msg = master.recv_match(blocking=True, timeout=1.0)
+            msg = master.recv_match(type=["GLOBAL_POSITION_INT", "SYS_STATUS"], blocking=True, timeout=1.0)
             now = time.monotonic()
 
             if msg is None:
